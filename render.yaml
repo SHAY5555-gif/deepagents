@@ -11,8 +11,6 @@ services:
     name: deepagents-postgres
     plan: starter
     region: frankfurt
-    databaseName: langgraph
-    databaseUser: langgraph
 
   # LangGraph API server (Docker)
   - type: web
