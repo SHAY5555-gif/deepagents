@@ -12,7 +12,10 @@ RUN set -ex && \
         echo "$line" >> /deps/__outer_default/pyproject.toml; \
     done
 
-# Install dependencies
+# Install dependencies from requirements.txt first
+RUN pip install -c /api/constraints.txt -r /deps/__outer_default/src/requirements.txt
+
+# Install the package in editable mode
 RUN pip install -c /api/constraints.txt -e /deps/*
 
 # Set environment
