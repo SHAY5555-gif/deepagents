@@ -19,3 +19,6 @@ RUN pip install -c /api/constraints.txt -e /deps/*
 ENV LANGSERVE_GRAPHS='{"mcp_agent_async": "/deps/__outer_default/src/mcp_agent_async.py:agent", "simple_parallel_agent": "/deps/__outer_default/src/simple_parallel_agent.py:agent", "mcp_agent_example": "/deps/__outer_default/src/mcp_agent_example.py:agent", "mcp_agent_grok": "/deps/__outer_default/src/mcp_agent_grok.py:agent", "mcp_agent_grok_fast": "/deps/__outer_default/src/mcp_agent_grok_fast.py:agent", "mcp_agent_grok_fast_with_retry": "/deps/__outer_default/src/mcp_agent_grok_fast_with_retry.py:agent"}'
 
 WORKDIR /deps/__outer_default/src
+
+# Override CMD to run uvicorn directly instead of langgraph up
+CMD ["uvicorn", "langgraph_api.server:app", "--host", "0.0.0.0", "--port", "8000"]
