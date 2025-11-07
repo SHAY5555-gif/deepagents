@@ -1,0 +1,45 @@
+# Docker Compose configuration for LangGraph with CORS support via Nginx
+version: '3.8'
+
+services:
+  # Nginx reverse proxy with CORS
+  nginx-cors:
+    image: nginx:alpine
+    container_name: langgraph-cors-proxy
+    ports:
+      - "8090:80"
+    volumes:
+      - ./nginx-cors.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - langgraph
+    networks:
+      - langgraph-network
+    restart: unless-stopped
+
+  # LangGraph service (if running in Docker)
+  langgraph:
+    build: .
+    container_name: langgraph-server
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - LANGSMITH_API_KEY=${LANGSMITH_API_KEY}
+      - LANGCHAIN_TRACING_V2=${LANGCHAIN_TRACING_V2}
+      - LANGCHAIN_PROJECT=${LANGCHAIN_PROJECT}
+      - XAI_API_KEY=${XAI_API_KEY}
+      - TAVILY_API_KEY=${TAVILY_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - BROWSERBASE_API_KEY=${BROWSERBASE_API_KEY}
+      - BROWSERBASE_PROJECT_ID=${BROWSERBASE_PROJECT_ID}
+    volumes:
+      - ./:/app
+    command: langgraph up --host 0.0.0.0 --port 8123
+    expose:
+      - "8123"
+    networks:
+      - langgraph-network
+    restart: unless-stopped
+
+networks:
+  langgraph-network:
+    driver: bridge
