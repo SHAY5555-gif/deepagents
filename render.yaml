@@ -1,21 +1,43 @@
 services:
+  # Redis for LangGraph pub-sub
+  - type: redis
+    name: deepagents-redis
+    plan: starter
+    region: frankfurt
+    ipAllowList: []
+
+  # PostgreSQL for LangGraph state persistence
+  - type: pserv
+    name: deepagents-postgres
+    plan: starter
+    region: frankfurt
+    databaseName: langgraph
+    databaseUser: langgraph
+
+  # LangGraph API server (Docker)
   - type: web
     name: deepagents-langgraph
-    runtime: python
+    runtime: docker
     plan: starter
     region: frankfurt
     branch: main
-    buildCommand: pip install -r requirements.txt
-    startCommand: langgraph up --port $PORT
+    dockerfilePath: ./Dockerfile
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.0
+      - key: REDIS_URI
+        fromService:
+          type: redis
+          name: deepagents-redis
+          property: connectionString
+      - key: DATABASE_URI
+        fromDatabase:
+          name: deepagents-postgres
+          property: connectionString
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: LANGSMITH_API_KEY
         sync: false
       - key: LANGCHAIN_TRACING_V2
-        value: true
+        value: "true"
       - key: LANGCHAIN_PROJECT
         value: deepagents
       - key: XAI_API_KEY
