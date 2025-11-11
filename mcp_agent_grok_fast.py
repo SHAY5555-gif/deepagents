@@ -26,22 +26,7 @@ from deepagents import create_deep_agent
 # from parallel_processor_subagent import create_parallel_processor_subagent
 
 
-# Simulated demo tools
-@tool
-def get_cryptocurrency_price(symbol: str) -> str:
-    """Get the current price of a cryptocurrency."""
-    prices = {"BTC": "$45,000", "ETH": "$2,500", "ADA": "$0.50"}
-    return f"[MCP Tool: CoinCap] {symbol} price: {prices.get(symbol.upper(), 'Unknown')}"
-
-@tool
-def search_web(query: str) -> str:
-    """Search the web for information."""
-    return f"[MCP Tool: WebSearch] Found results for: {query}"
-
-@tool
-def get_weather(location: str) -> str:
-    """Get the current weather for a location."""
-    return f"[MCP Tool: Weather] The weather in {location} is sunny, 72°F"
+# No demo tools - using only real MCP tools
 
 
 
@@ -90,11 +75,11 @@ async def get_mcp_tools():
 
         # Connect to multiple MCP servers via remote HTTP
         _mcp_client = MultiServerMCPClient({
-            # # Chrome DevTools MCP from Smithery - REMOTE HTTP (DISABLED - causes ConnectTimeout on Render)
-            # "chrome_devtools": {
-            #     "url": "https://server.smithery.ai/@SHAY5555-gif/chrome-devtools-mcp/mcp?api_key=e20927d1-6314-4857-a81e-70ffb0b6af90&profile=supposed-whitefish-nFAkQL",
-            #     "transport": "streamable_http"
-            # },
+            # Chrome DevTools MCP from Smithery - REMOTE HTTP
+            "chrome_devtools": {
+                "url": "https://server.smithery.ai/@SHAY5555-gif/chrome-devtools-mcp/mcp?api_key=e20927d1-6314-4857-a81e-70ffb0b6af90&profile=supposed-whitefish-nFAkQL",
+                "transport": "streamable_http"
+            },
             # Bright Data MCP - Fast Web Scraping (with extended timeout for scraping operations)
             "bright_data": {
                 "url": "https://mcp.brightdata.com/mcp?token=edebeabb58a1ada040be8c1f67fb707e797a1810bf874285698e03e8771861a5",
@@ -150,18 +135,13 @@ async def agent():
     - Function calling, live search, image inputs
     - Best for complex reasoning + speed + cost optimization
     """
-    # Get all MCP tools
+    # Get all MCP tools (Chrome DevTools + Bright Data)
     mcp_tools = await get_mcp_tools()
 
-    # Combine all tools: demo + MCP tools
+    # Use only real MCP tools
     # Note: File system tools are provided automatically by FilesystemMiddleware in create_deep_agent
     # Using custom file tools here would bypass the files state tracking needed for the UI
-    all_tools = [
-        # Demo Tools
-        get_cryptocurrency_price,
-        search_web,
-        get_weather,
-    ] + mcp_tools
+    all_tools = mcp_tools
 
     # System prompt - emphasizing Grok Fast's speed AND reasoning
     system_prompt = f"""You are an UNSTOPPABLE, RELENTLESS web automation agent powered by Grok-4 Fast Reasoning.
@@ -192,8 +172,7 @@ YOU HAVE {len(all_tools)} WORKING TOOLS INCLUDING:
 - Reduce token usage by persisting information
 - Keep logs of actions and results
 
-**BROWSER AUTOMATION TOOLS** ({len(mcp_tools)} MCP tools):
-You CAN and SHOULD use these tools to:
+**BROWSER AUTOMATION TOOLS** (Chrome DevTools MCP):
 - navigate_page: Navigate to ANY website
 - take_screenshot: Take screenshots of web pages
 - take_snapshot: Get text content of pages
@@ -201,11 +180,13 @@ You CAN and SHOULD use these tools to:
 - list_pages, new_page: Manage browser tabs
 - evaluate_script: Run JavaScript on pages
 - list_network_requests, list_console_messages: Debug and monitor
-- firecrawl_scrape: Scrape web content to markdown
-- And 28+ more Chrome DevTools & Firecrawl capabilities!
+- And 100+ more Chrome DevTools capabilities!
 
-**DEMO TOOLS** (3 simulated):
-- get_cryptocurrency_price, search_web, get_weather
+**WEB SCRAPING TOOLS** (Bright Data MCP):
+- search_engine: Search Google/Bing/Yandex and get results
+- scrape_as_markdown: Scrape any webpage to markdown format
+- search_engine_batch: Search multiple queries in parallel
+- scrape_batch: Scrape multiple URLs in parallel
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🔥 SUPREME LAW OF PERSISTENCE - READ THIS CAREFULLY! 🔥
