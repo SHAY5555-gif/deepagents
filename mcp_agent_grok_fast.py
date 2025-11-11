@@ -80,15 +80,13 @@ async def get_mcp_tools():
                 "url": "https://server.smithery.ai/@SHAY5555-gif/chrome-devtools-mcp/mcp?api_key=e20927d1-6314-4857-a81e-70ffb0b6af90&profile=supposed-whitefish-nFAkQL",
                 "transport": "streamable_http"
             },
-            # Bright Data MCP - Fast Web Scraping (with extended timeout for scraping operations)
-            "bright_data": {
-                "url": "https://mcp.brightdata.com/mcp?token=edebeabb58a1ada040be8c1f67fb707e797a1810bf874285698e03e8771861a5",
-                "transport": "streamable_http",
-                # Bright Data requires high timeouts for web scraping operations
-                # Recommended: 180-300 seconds for complex websites
-                "timeout": timedelta(seconds=300),  # 5 minutes overall timeout
-                "sse_read_timeout": timedelta(seconds=300),  # 5 minutes SSE read timeout
-            },
+            # # Bright Data MCP - DISABLED (causes agent to hang)
+            # "bright_data": {
+            #     "url": "https://mcp.brightdata.com/mcp?token=edebeabb58a1ada040be8c1f67fb707e797a1810bf874285698e03e8771861a5",
+            #     "transport": "streamable_http",
+            #     "timeout": timedelta(seconds=300),
+            #     "sse_read_timeout": timedelta(seconds=300),
+            # },
             # # Firecrawl MCP - Web Scraping and Crawling (DISABLED - slow)
             # "firecrawl": {
             #     "url": "https://mcp.firecrawl.dev/fc-0bed08c54ba34a349ef512c32d1a8328/v2/mcp",
@@ -172,7 +170,7 @@ YOU HAVE {len(all_tools)} WORKING TOOLS INCLUDING:
 - Reduce token usage by persisting information
 - Keep logs of actions and results
 
-**BROWSER AUTOMATION TOOLS** (Chrome DevTools MCP):
+**BROWSER AUTOMATION & WEB SCRAPING TOOLS** (Chrome DevTools MCP):
 - navigate_page: Navigate to ANY website
 - take_screenshot: Take screenshots of web pages
 - take_snapshot: Get text content of pages
@@ -181,12 +179,6 @@ YOU HAVE {len(all_tools)} WORKING TOOLS INCLUDING:
 - evaluate_script: Run JavaScript on pages
 - list_network_requests, list_console_messages: Debug and monitor
 - And 100+ more Chrome DevTools capabilities!
-
-**WEB SCRAPING TOOLS** (Bright Data MCP):
-- search_engine: Search Google/Bing/Yandex and get results
-- scrape_as_markdown: Scrape any webpage to markdown format
-- search_engine_batch: Search multiple queries in parallel
-- scrape_batch: Scrape multiple URLs in parallel
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🔥 SUPREME LAW OF PERSISTENCE - READ THIS CAREFULLY! 🔥
