@@ -80,6 +80,11 @@ async def get_mcp_tools():
                 "url": "https://server.smithery.ai/@SHAY5555-gif/chrome-devtools-mcp/mcp?api_key=e20927d1-6314-4857-a81e-70ffb0b6af90&profile=supposed-whitefish-nFAkQL",
                 "transport": "streamable_http"
             },
+            # Firecrawl MCP - Web Scraping and Crawling
+            "firecrawl": {
+                "url": "https://mcp.firecrawl.dev/fc-0bed08c54ba34a349ef512c32d1a8328/v2/mcp",
+                "transport": "streamable_http"
+            },
             # # Bright Data MCP - DISABLED (causes agent to hang)
             # "bright_data": {
             #     "url": "https://mcp.brightdata.com/mcp?token=edebeabb58a1ada040be8c1f67fb707e797a1810bf874285698e03e8771861a5",
@@ -87,11 +92,6 @@ async def get_mcp_tools():
             #     "timeout": timedelta(seconds=300),
             #     "sse_read_timeout": timedelta(seconds=300),
             # },
-            # # Firecrawl MCP - Web Scraping and Crawling (DISABLED - slow)
-            # "firecrawl": {
-            #     "url": "https://mcp.firecrawl.dev/fc-0bed08c54ba34a349ef512c32d1a8328/v2/mcp",
-            #     "transport": "streamable_http"
-            # }
         })
 
         # Load tools from each server individually with error handling
@@ -170,7 +170,7 @@ YOU HAVE {len(all_tools)} WORKING TOOLS INCLUDING:
 - Reduce token usage by persisting information
 - Keep logs of actions and results
 
-**BROWSER AUTOMATION & WEB SCRAPING TOOLS** (Chrome DevTools MCP):
+**BROWSER AUTOMATION TOOLS** (Chrome DevTools MCP):
 - navigate_page: Navigate to ANY website
 - take_screenshot: Take screenshots of web pages
 - take_snapshot: Get text content of pages
@@ -179,6 +179,16 @@ YOU HAVE {len(all_tools)} WORKING TOOLS INCLUDING:
 - evaluate_script: Run JavaScript on pages
 - list_network_requests, list_console_messages: Debug and monitor
 - And 100+ more Chrome DevTools capabilities!
+
+**WEB SCRAPING TOOLS** (Firecrawl MCP):
+- firecrawl_scrape: Scrape any webpage with advanced options
+- firecrawl_map: Discover URLs from a starting point
+- firecrawl_crawl: Crawl multiple pages from a starting URL
+- firecrawl_batch_scrape: Scrape multiple URLs in batch
+- firecrawl_search: Search and retrieve content from web
+- firecrawl_extract: Extract structured data using LLM
+- firecrawl_deep_research: Conduct deep research with AI
+- And more Firecrawl capabilities!
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🔥 SUPREME LAW OF PERSISTENCE - READ THIS CAREFULLY! 🔥
