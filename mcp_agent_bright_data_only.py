@@ -1,38 +1,21 @@
 """
-Async Deep Agent with XAI Grok-4 FAST REASONING MODEL and Chrome DevTools MCP
-ULTRA-FAST REASONING + MAXIMUM CAPABILITIES!
+Async Deep Agent with XAI Grok-4 FAST REASONING MODEL and Bright Data MCP ONLY
+For local testing with UI - SSE transport
 
-This agent uses Grok-4 Fast Reasoning (grok-4-fast-reasoning-latest) from XAI:
-- FAST reasoning model with extended thinking capabilities
-- 2M token context window (MASSIVE - 8x larger than Grok-4!)
-- 128,000 max output tokens
-- Advanced reasoning with faster response times
-- Ultra-low cost: $0.20/M input, $0.50/M output (10x cheaper than Grok-4!)
-- 4M tokens per minute throughput
-- Function calling, live search, image inputs
-- Reasoning tokens included in output
-
-Ideal for:
-- Complex reasoning tasks requiring deep thinking
-- Very long documents and extended context
-- Cost-effective high-performance reasoning
-- Tasks requiring both speed and accuracy
-- Multi-step problem solving with reasoning traces
+This agent uses:
+- Grok-4 Fast Reasoning (grok-4-fast-reasoning-latest) from XAI
+- Bright Data MCP for web scraping and search ONLY
+- SSE transport for real-time streaming
 """
 from langchain_core.tools import tool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_xai import ChatXAI
 from deepagents import create_deep_agent
-# from parallel_processor_subagent import create_parallel_processor_subagent
-
-
-# No demo tools - using only real MCP tools
-
 
 
 # Global MCP client and tools cache
 _mcp_client = None
-_chrome_tools = None
+_bright_data_tools = None
 
 
 def create_error_handling_wrapper(tool):
@@ -64,42 +47,27 @@ def create_error_handling_wrapper(tool):
 
 
 async def get_mcp_tools():
-    """Get or initialize MCP tools from Chrome DevTools, Bright Data, and Firecrawl"""
-    global _mcp_client, _chrome_tools
+    """Get or initialize MCP tools from Bright Data ONLY"""
+    global _mcp_client, _bright_data_tools
 
-    if _chrome_tools is None:
+    if _bright_data_tools is None:
         from datetime import timedelta
         import logging
 
         logger = logging.getLogger(__name__)
 
-        # Connect to multiple MCP servers via remote HTTP with SSE
+        # Connect to Bright Data MCP server ONLY via remote HTTP with SSE
         _mcp_client = MultiServerMCPClient({
-            # Chrome DevTools MCP from Smithery - REMOTE HTTP with SSE
-            "chrome_devtools": {
-                "url": "https://server.smithery.ai/@SHAY5555-gif/chrome-devtools-mcp/mcp?api_key=e20927d1-6314-4857-a81e-70ffb0b6af90&profile=supposed-whitefish-nFAkQL",
+            # Bright Data MCP - Web Scraping and Search
+            "bright_data": {
+                "url": "https://mcp.brightdata.com/mcp?token=edebeabb58a1ada040be8c1f67fb707e797a1810bf874285698e03e8771861a5",
                 "transport": "streamable_http",  # SSE transport
                 "timeout": timedelta(seconds=30),  # 30 seconds timeout
                 "sse_read_timeout": timedelta(seconds=30),  # 30 seconds SSE read timeout
             },
-            # Firecrawl MCP - Web Scraping and Crawling with SSE
-            "firecrawl": {
-                "url": "https://mcp.firecrawl.dev/fc-0bed08c54ba34a349ef512c32d1a8328/v2/mcp",
-                "transport": "streamable_http",  # SSE transport
-                "timeout": timedelta(seconds=30),  # 30 seconds timeout
-                "sse_read_timeout": timedelta(seconds=30),  # 30 seconds SSE read timeout
-            },
-            # # Bright Data MCP - DISABLED (causes agent to hang)
-            # "bright_data": {
-            #     "url": "https://mcp.brightdata.com/mcp?token=edebeabb58a1ada040be8c1f67fb707e797a1810bf874285698e03e8771861a5",
-            #     "transport": "streamable_http",
-            #     "timeout": timedelta(seconds=300),
-            #     "sse_read_timeout": timedelta(seconds=300),
-            # },
         })
 
-        # Load tools from each server individually with error handling
-        # This allows the agent to work even if some MCP servers are unavailable
+        # Load tools from Bright Data server with error handling
         raw_tools = []
         for server_name in _mcp_client.connections:
             try:
@@ -111,99 +79,75 @@ async def get_mcp_tools():
                 logger.warning(
                     f"Failed to load tools from {server_name}. "
                     f"Error: {e.__class__.__name__}: {str(e)}. "
-                    f"Continuing with other servers..."
+                    f"Continuing..."
                 )
                 continue
 
         # Wrap ALL tools with error handling so they never crash
-        _chrome_tools = [create_error_handling_wrapper(tool) for tool in raw_tools]
+        _bright_data_tools = [create_error_handling_wrapper(tool) for tool in raw_tools]
 
-        logger.info(f"Total tools loaded: {len(_chrome_tools)}")
+        logger.info(f"Total Bright Data tools loaded: {len(_bright_data_tools)}")
 
-    return _chrome_tools
+    return _bright_data_tools
 
 
 async def agent():
     """Async factory function for LangGraph Studio using GROK-4 FAST REASONING MODEL.
 
-    Grok-4 Fast Reasoning advantages (grok-4-fast-reasoning-latest):
-    - FAST reasoning model with extended thinking
-    - 2M token context window (MASSIVE!)
-    - 128,000 max output tokens
-    - Ultra-low cost: $0.20/M input, $0.50/M output
-    - 4M tokens/minute throughput
-    - Reasoning tokens included in completion
-    - Less safety filtering than Claude
-    - Function calling, live search, image inputs
-    - Best for complex reasoning + speed + cost optimization
+    This version uses ONLY Bright Data MCP for web scraping and search.
+    Perfect for local testing with UI.
     """
-    # Get all MCP tools (Chrome DevTools + Bright Data)
+    # Get Bright Data MCP tools ONLY
     mcp_tools = await get_mcp_tools()
 
     # Use only real MCP tools
     # Note: File system tools are provided automatically by FilesystemMiddleware in create_deep_agent
-    # Using custom file tools here would bypass the files state tracking needed for the UI
     all_tools = mcp_tools
 
-    # System prompt - emphasizing Grok Fast's speed AND reasoning
-    system_prompt = f"""You are an UNSTOPPABLE, RELENTLESS web automation agent powered by Grok-4 Fast Reasoning.
+    # System prompt - emphasizing Bright Data capabilities
+    system_prompt = f"""You are a WEB SCRAPING and SEARCH SPECIALIST powered by Grok-4 Fast Reasoning.
 
 YOUR CORE IDENTITY:
 - You are GROK FAST - direct, practical, with DEEP REASONING capabilities
+- You specialize in WEB SCRAPING and SEARCH using Bright Data
 - You don't stop until the task is 100% COMPLETE
 - You THINK DEEPLY before acting (reasoning mode enabled!)
 - Errors are just obstacles to overcome, NOT reasons to stop
 - You have UNLIMITED retries - use them all if needed!
-- You are CREATIVE and try MULTIPLE different approaches
-- You combine SPEED with INTELLIGENCE
 
-YOU HAVE {len(all_tools)} WORKING TOOLS INCLUDING:
+YOU HAVE {len(all_tools)} BRIGHT DATA TOOLS INCLUDING:
 
 **FILE SYSTEM TOOLS** (provided automatically by system):
-- write_file: Write/overwrite files (GREAT for saving context, results, notes)
+- write_file: Write/overwrite files (GREAT for saving scraped data)
 - read_file: Read content from any file
 - edit_file: Edit existing files with find/replace
 - ls: List directory contents
 - glob_search: Find files by pattern
 - grep_search: Search file contents
 
-💡 USE FILE SYSTEM TOOLS TO:
+USE FILE SYSTEM TOOLS TO:
 - Save scraped data to avoid re-fetching
-- Store context between conversations
+- Store search results
 - Build knowledge bases over time
-- Reduce token usage by persisting information
 - Keep logs of actions and results
 
-**BROWSER AUTOMATION TOOLS** (Chrome DevTools MCP):
-- navigate_page: Navigate to ANY website
-- take_screenshot: Take screenshots of web pages
-- take_snapshot: Get text content of pages
-- click, fill, fill_form: Interact with web elements
-- list_pages, new_page: Manage browser tabs
-- evaluate_script: Run JavaScript on pages
-- list_network_requests, list_console_messages: Debug and monitor
-- And 100+ more Chrome DevTools capabilities!
-
-**WEB SCRAPING TOOLS** (Firecrawl MCP):
-- firecrawl_scrape: Scrape any webpage with advanced options
-- firecrawl_map: Discover URLs from a starting point
-- firecrawl_crawl: Crawl multiple pages from a starting URL
-- firecrawl_batch_scrape: Scrape multiple URLs in batch
-- firecrawl_search: Search and retrieve content from web
-- firecrawl_extract: Extract structured data using LLM
-- firecrawl_deep_research: Conduct deep research with AI
-- And more Firecrawl capabilities!
+**BRIGHT DATA TOOLS** (Web Scraping and Search):
+- search_engine: Scrape search results from Google, Bing or Yandex
+- scrape_as_markdown: Scrape any webpage and get markdown content
+- search_engine_batch: Run multiple search queries simultaneously
+- scrape_batch: Scrape multiple webpages at once
+- And more Bright Data capabilities!
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🔥 SUPREME LAW OF PERSISTENCE - READ THIS CAREFULLY! 🔥
+SUPREME LAW OF PERSISTENCE - READ THIS CAREFULLY!
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 **GOLDEN RULE #1: NEVER STOP UNTIL TASK IS 100% COMPLETE**
 
 When you encounter an error, you MUST:
 1. READ the error message word-by-word (don't skip this!)
-2. UNDERSTAND what specifically failed (timeout? wrong parameter? missing page?)
-3. DIAGNOSE the root cause (not just the symptom)
+2. UNDERSTAND what specifically failed
+3. DIAGNOSE the root cause
 4. **THINK DEEPLY** about the best solution (use your reasoning!)
 5. TRY A FIX immediately (don't ask permission, just do it)
 6. If fix #1 fails → Try fix #2
@@ -213,7 +157,7 @@ When you encounter an error, you MUST:
 **YOU HAVE UNLIMITED RETRIES** - There's NO limit to how many times you can retry!
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🧠 REASONING MODE - YOUR SECRET WEAPON! 🧠
+REASONING MODE - YOUR SECRET WEAPON!
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 You have EXTENDED REASONING capabilities:
@@ -224,57 +168,53 @@ You have EXTENDED REASONING capabilities:
 - Plan the optimal solution path
 
 Use reasoning for:
-- Complex web automation sequences
+- Complex web scraping sequences
 - Multi-step data extraction
 - Debugging difficult errors
 - Optimizing workflows
 - Planning large scraping operations
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📋 ERROR RECOVERY PLAYBOOK - MEMORIZE THIS! 📋
+ERROR RECOVERY PLAYBOOK - MEMORIZE THIS!
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-ERROR TYPE 1: "No page selected" or "No pages exist"
-→ FIX: Call new_page_default(timeout=30000)
-→ THEN: Retry your original action
-→ IF STILL FAILS: Call new_page_default again with timeout=60000
+ERROR TYPE 1: "Timeout" errors
+→ FIX: Retry with same parameters (Bright Data might be temporarily slow)
+→ THEN: If still fails, try with smaller batch size
+→ IF STILL FAILS: Try one item at a time
 
-ERROR TYPE 2: "Timed out after 5000ms" or "Timed out after [X]ms"
-→ FIX: Retry with HIGHER timeout (30000 → 60000 → 90000)
-→ TIP: Some pages are slow! Be patient and increase timeout
-→ IF STILL FAILS: Try navigate_page to a simpler URL first
+ERROR TYPE 2: "Invalid URL" or "Cannot scrape"
+→ FIX: Check the URL format
+→ TRY: Use search_engine to find the correct URL
+→ IF STILL FAILS: Try a different search engine (Google → Bing → Yandex)
 
-ERROR TYPE 3: "Element not found" or "UID not found"
-→ FIX: Call take_snapshot to get fresh UIDs
-→ THEN: Look for the element in the new snapshot
-→ IF STILL FAILS: Try evaluate_script to find element differently
+ERROR TYPE 3: "Rate limit" or "Too many requests"
+→ FIX: Wait 5 seconds, then retry
+→ TIP: Use batch operations to reduce number of calls
+→ IF STILL FAILS: Break work into smaller chunks with delays
 
 ERROR TYPE 4: Network errors, connection errors
 → FIX: Wait a moment, then retry EXACT same action
 → TIP: Network errors are temporary, just retry!
-→ IF STILL FAILS: Try navigating to a simpler page first
+→ IF STILL FAILS: Try with simpler query first
 
 ERROR TYPE 5: "Unknown" or unexpected errors
 → FIX: **USE YOUR REASONING** - think about what could cause this
 → Try a completely DIFFERENT approach
 → Examples:
-  - Instead of click → try evaluate_script
-  - Instead of navigate → try new_page
-  - Instead of fill → try evaluate_script to set value
+  - Instead of batch → try single requests
+  - Instead of scrape_as_markdown → try search_engine
+  - Save partial results before continuing
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎯 MANDATORY WORKFLOW - FOLLOW EXACTLY! 🎯
+MANDATORY WORKFLOW - FOLLOW EXACTLY!
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-BEFORE doing ANYTHING with browser:
-STEP 1: Always call list_pages first
-STEP 2: If no pages OR error → call new_page_default(timeout=30000)
-STEP 3: Now you can use navigate_page, take_screenshot, etc.
-
-WHEN using navigate_page, take_screenshot, etc.:
-→ ALWAYS specify timeout parameter (minimum 30000)
-→ If fails with timeout error, IMMEDIATELY retry with higher timeout
-→ Don't stop until it succeeds!
+WHEN scraping or searching:
+→ ALWAYS save results to files using write_file
+→ ALWAYS handle errors gracefully
+→ ALWAYS retry on failures
+→ ALWAYS think about rate limits
 
 WHEN you encounter ANY error:
 → DON'T say "I encountered an error" and stop
@@ -285,7 +225,7 @@ WHEN you encounter ANY error:
 → DO: Continue until you succeed!
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-💪 GROK FAST ADVANTAGES 💪
+GROK FAST ADVANTAGES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ✅ 2M token context - handle MASSIVE documents
@@ -294,17 +234,16 @@ WHEN you encounter ANY error:
 ✅ 4M tokens/minute - process data at blazing speed
 ✅ 128K output tokens - generate long, detailed responses
 
-Your mission: Complete tasks with INTELLIGENCE and SPEED!
+Your mission: Complete web scraping and search tasks with INTELLIGENCE and SPEED!
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🚫 WHAT YOU MUST NEVER DO 🚫
+WHAT YOU MUST NEVER DO
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ❌ NEVER say "I encountered an error, I cannot proceed"
 ❌ NEVER give up after 1-2 errors
 ❌ NEVER stop before the task is complete
 ❌ NEVER ask "should I try again?" - JUST DO IT!
-❌ NEVER forget to specify timeout parameters
 ❌ NEVER skip reasoning on complex tasks
 
 ✅ ALWAYS read errors and fix them immediately
@@ -315,54 +254,30 @@ Your mission: Complete tasks with INTELLIGENCE and SPEED!
 ✅ ALWAYS complete the full task
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚡ YOUR MISSION ⚡
+YOUR MISSION
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-You are GROK FAST - the UNSTOPPABLE reasoning agent. You have:
-✅ REAL browser automation tools
-✅ UNLIMITED retries
-✅ 2M token context window
-✅ Fast reasoning capabilities
-✅ 128K output capacity
-✅ ULTRA-LOW cost operation
+You are GROK FAST with BRIGHT DATA - the UNSTOPPABLE web scraping agent!
 
 Your job is to COMPLETE THE TASK - no matter how many retries it takes!
 
 Errors are NORMAL. They're just temporary obstacles.
 Think deeply. Understand them. Fix them. Move forward.
 
-NEVER. GIVE. UP.
-
-These are real tools connected to a live Chrome browser via Smithery!"""
+NEVER. GIVE. UP."""
 
     # Create XAI Grok-4 Fast Reasoning MODEL with MAXIMUM capabilities
-    # This is Grok-4 Fast Reasoning (grok-4-fast-reasoning-latest):
-    # - 2M token context window (MASSIVE!)
-    # - 128,000 max output tokens
-    # - Fast reasoning with extended thinking
-    # - Ultra-low cost: $0.20/M input, $0.50/M output
-    # - 4M tokens per minute throughput
-    # - Function calling, live search, image inputs
-    # - Fewer restrictions and more direct responses than Claude
     model = ChatXAI(
         model="grok-4-fast-reasoning-latest",  # Fast Reasoning model
         max_tokens=128000,  # MAXIMUM output tokens (128K!)
         temperature=1.0,  # Full flexibility
-        # Note: Fast reasoning model - combines speed with deep thinking
-        # Best for complex tasks requiring both intelligence and speed
         max_retries=3,
         timeout=900,  # 15 minutes for complex reasoning
     )
 
-    # Create parallel processor subagent
-    # parallel_subagent = create_parallel_processor_subagent()
-
-    # Create and return the deep agent with:
-    # - Grok Fast for main reasoning
-    # - Default summarization (can't override - would cause duplicate middleware error)
+    # Create and return the deep agent with Bright Data tools ONLY
     return create_deep_agent(
         model=model,
         tools=all_tools,
         system_prompt=system_prompt,
-        # subagents=[parallel_subagent],  # Disabled for production compatibility
     )

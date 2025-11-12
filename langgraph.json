@@ -6,7 +6,8 @@
     "mcp_agent_example": "./mcp_agent_example.py:agent",
     "mcp_agent_grok": "./mcp_agent_grok.py:agent",
     "mcp_agent_grok_fast": "./mcp_agent_grok_fast.py:agent",
-    "mcp_agent_grok_fast_with_retry": "./mcp_agent_grok_fast_with_retry.py:agent"
+    "mcp_agent_grok_fast_with_retry": "./mcp_agent_grok_fast_with_retry.py:agent",
+    "mcp_agent_bright_data_only": "./mcp_agent_bright_data_only.py:agent"
   },
   "env": ".env"
 }
