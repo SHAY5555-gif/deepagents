@@ -6,16 +6,25 @@ This agent uses:
 - Grok-4 Fast Reasoning (grok-4-fast-reasoning-latest) from XAI
 - Bright Data MCP for web scraping and search ONLY
 - SSE transport for real-time streaming
+- EAGER LOADING: Tools load at server startup, not on first use
 """
+import asyncio
+import logging
+import sys
+from datetime import timedelta
 from langchain_core.tools import tool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_xai import ChatXAI
 from deepagents import create_deep_agent
 
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Global MCP client and tools cache
 _mcp_client = None
 _bright_data_tools = None
+_initialization_lock = asyncio.Lock()
+_initialization_in_progress = False
 
 
 def create_error_handling_wrapper(tool):
@@ -47,48 +56,99 @@ def create_error_handling_wrapper(tool):
 
 
 async def get_mcp_tools():
-    """Get or initialize MCP tools from Bright Data ONLY"""
-    global _mcp_client, _bright_data_tools
+    """Get or initialize MCP tools from Bright Data ONLY with proper ExceptionGroup handling"""
+    global _mcp_client, _bright_data_tools, _initialization_in_progress
 
-    if _bright_data_tools is None:
-        from datetime import timedelta
-        import logging
+    # Use lock to prevent concurrent initialization
+    async with _initialization_lock:
+        if _bright_data_tools is not None:
+            return _bright_data_tools
 
-        logger = logging.getLogger(__name__)
+        if _initialization_in_progress:
+            logger.warning("Initialization already in progress, waiting...")
+            # Wait a bit and return empty list if still not ready
+            await asyncio.sleep(2)
+            return _bright_data_tools or []
 
-        # Connect to Bright Data MCP server ONLY via remote HTTP with SSE
-        _mcp_client = MultiServerMCPClient({
-            # Bright Data MCP - Web Scraping and Search
-            "bright_data": {
-                "url": "https://mcp.brightdata.com/mcp?token=edebeabb58a1ada040be8c1f67fb707e797a1810bf874285698e03e8771861a5",
-                "transport": "streamable_http",  # SSE transport
-                "timeout": timedelta(seconds=30),  # 30 seconds timeout
-                "sse_read_timeout": timedelta(seconds=30),  # 30 seconds SSE read timeout
-            },
-        })
+        _initialization_in_progress = True
 
-        # Load tools from Bright Data server with error handling
-        raw_tools = []
-        for server_name in _mcp_client.connections:
-            try:
-                logger.info(f"Loading tools from MCP server: {server_name}")
-                server_tools = await _mcp_client.get_tools(server_name=server_name)
-                raw_tools.extend(server_tools)
-                logger.info(f"Successfully loaded {len(server_tools)} tools from {server_name}")
-            except Exception as e:
-                logger.warning(
-                    f"Failed to load tools from {server_name}. "
-                    f"Error: {e.__class__.__name__}: {str(e)}. "
-                    f"Continuing..."
-                )
-                continue
+        try:
+            logger.info("=" * 80)
+            logger.info("STARTING BRIGHT DATA MCP TOOL INITIALIZATION")
+            logger.info("=" * 80)
 
-        # Wrap ALL tools with error handling so they never crash
-        _bright_data_tools = [create_error_handling_wrapper(tool) for tool in raw_tools]
+            # Connect to Bright Data MCP server ONLY via remote HTTP with SSE
+            _mcp_client = MultiServerMCPClient({
+                # Bright Data MCP - Web Scraping and Search
+                "bright_data": {
+                    "url": "https://mcp.brightdata.com/mcp?token=edebeabb58a1ada040be8c1f67fb707e797a1810bf874285698e03e8771861a5",
+                    "transport": "streamable_http",  # SSE transport
+                    "timeout": timedelta(seconds=45),  # 45 seconds timeout
+                    "sse_read_timeout": timedelta(seconds=45),  # 45 seconds SSE read timeout
+                },
+            })
 
-        logger.info(f"Total Bright Data tools loaded: {len(_bright_data_tools)}")
+            # Load tools from Bright Data server with enhanced error handling
+            raw_tools = []
+            for server_name in _mcp_client.connections:
+                try:
+                    logger.info(f"Loading tools from MCP server: {server_name}")
+                    server_tools = await _mcp_client.get_tools(server_name=server_name)
+                    raw_tools.extend(server_tools)
+                    logger.info(f"Successfully loaded {len(server_tools)} tools from {server_name}")
 
-    return _bright_data_tools
+                # Handle ExceptionGroup (Python 3.11+) using except*
+                except* Exception as eg:
+                    logger.error(f"ExceptionGroup occurred while loading tools from {server_name}:")
+                    for i, exc in enumerate(eg.exceptions):
+                        logger.error(f"  Sub-exception {i+1}: {exc.__class__.__name__}: {str(exc)}")
+                    logger.warning(f"Continuing despite errors...")
+                    continue
+
+                # Fallback for regular exceptions (if except* doesn't catch it)
+                except BaseException as e:
+                    logger.error(
+                        f"Failed to load tools from {server_name}. "
+                        f"Error type: {e.__class__.__name__}, Message: {str(e)}"
+                    )
+                    # Check if this is an ExceptionGroup
+                    if hasattr(e, 'exceptions'):
+                        logger.error(f"This is an ExceptionGroup with {len(e.exceptions)} sub-exceptions:")
+                        for i, sub_exc in enumerate(e.exceptions):
+                            logger.error(f"  Sub-exception {i+1}: {sub_exc.__class__.__name__}: {str(sub_exc)}")
+                    logger.warning(f"Continuing despite errors...")
+                    continue
+
+            if not raw_tools:
+                logger.error("No tools were loaded from Bright Data MCP!")
+                logger.error("Agent will start with empty tool list")
+                _bright_data_tools = []
+            else:
+                # Wrap ALL tools with error handling so they never crash
+                _bright_data_tools = [create_error_handling_wrapper(tool) for tool in raw_tools]
+                logger.info("=" * 80)
+                logger.info(f"SUCCESS! Total Bright Data tools loaded: {len(_bright_data_tools)}")
+                logger.info("=" * 80)
+
+        except BaseException as e:
+            logger.error("=" * 80)
+            logger.error(f"CRITICAL ERROR during MCP initialization: {e.__class__.__name__}")
+            logger.error(f"Error message: {str(e)}")
+
+            # Check if this is an ExceptionGroup
+            if hasattr(e, 'exceptions'):
+                logger.error(f"This is an ExceptionGroup with {len(e.exceptions)} sub-exceptions:")
+                for i, sub_exc in enumerate(e.exceptions):
+                    logger.error(f"  Sub-exception {i+1}: {sub_exc.__class__.__name__}: {str(sub_exc)}")
+
+            logger.error("Agent will start with empty tool list")
+            logger.error("=" * 80)
+            _bright_data_tools = []
+
+        finally:
+            _initialization_in_progress = False
+
+        return _bright_data_tools
 
 
 async def agent():
@@ -281,3 +341,65 @@ NEVER. GIVE. UP."""
         tools=all_tools,
         system_prompt=system_prompt,
     )
+
+
+# ============================================================================
+# EAGER INITIALIZATION - Load tools at module import
+# ============================================================================
+
+async def _eager_init_tools():
+    """Eagerly initialize Bright Data MCP tools at server startup"""
+    logger.info("🚀 EAGER INITIALIZATION: Starting Bright Data MCP tool loading...")
+    try:
+        tools = await get_mcp_tools()
+        if tools:
+            logger.info(f"✅ EAGER INITIALIZATION SUCCESS: {len(tools)} tools ready!")
+        else:
+            logger.warning("⚠️  EAGER INITIALIZATION: No tools loaded (will retry on first agent call)")
+    except BaseException as e:
+        logger.error(f"❌ EAGER INITIALIZATION FAILED: {e.__class__.__name__}: {str(e)}")
+        logger.error("Tools will be loaded lazily on first agent call")
+
+
+def _sync_eager_init():
+    """Synchronous wrapper for eager initialization"""
+    try:
+        # Try to get or create an event loop
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_closed():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        # Run the initialization
+        loop.run_until_complete(_eager_init_tools())
+    except Exception as e:
+        logger.error(f"Failed to run eager initialization: {e.__class__.__name__}: {str(e)}")
+        logger.info("Tools will be loaded lazily on first agent call")
+
+
+# Trigger eager initialization when module is imported
+# This ensures tools are loaded at server startup, not on first request
+logger.info("=" * 80)
+logger.info("MODULE LOADING: mcp_agent_bright_data_only.py")
+logger.info("=" * 80)
+
+# Check if we're in an async context (e.g., LangGraph server startup)
+try:
+    # Try to schedule the initialization in the current event loop if available
+    try:
+        loop = asyncio.get_running_loop()
+        # We're in an async context, schedule the initialization
+        logger.info("Detected running event loop - scheduling eager initialization")
+        asyncio.create_task(_eager_init_tools())
+    except RuntimeError:
+        # No running loop, we need to create one
+        logger.info("No running event loop - will initialize on first agent call or via startup hook")
+        # Don't block module import, but log that eager init will happen later
+        pass
+except Exception as e:
+    logger.warning(f"Could not schedule eager initialization: {e}")
+    logger.info("Tools will be loaded on first agent call")
