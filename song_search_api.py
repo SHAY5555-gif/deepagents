@@ -25,8 +25,8 @@ app.add_middleware(
 )
 
 # LangGraph Configuration
-LANGGRAPH_ENDPOINT = "https://deepagents-langgraph.onrender.com"
-AGENT_ID = "mcp_agent_grok_fast"
+LANGGRAPH_ENDPOINT = "https://deepagents-langgraph.onrender.com"  # TODO: Update to Railway URL
+AGENT_ID = "mcp_agent_bright_data_glm"  # Changed from mcp_agent_grok_fast
 API_KEY = "demo-token"
 
 # Request/Response models
