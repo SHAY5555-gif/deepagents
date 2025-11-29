@@ -4,12 +4,12 @@ Grok-4 Fast Reasoning Agent with AUTOMATIC RETRY/RESUME Logic
 This is a STANDALONE SCRIPT that wraps the Grok Fast agent and adds automatic retry.
 It's designed to be used OUTSIDE of LangGraph Studio for production deployments.
 
-For LangGraph Studio usage, the base agent (mcp_agent_grok_fast.py) already has
+For LangGraph Studio usage, the base agent (grok_fast_firecrawl_mcp.py) already has
 unlimited retries built into its system prompt. This script provides programmatic
 control over retries for custom deployments.
 
 Usage:
-    from mcp_agent_grok_fast_with_retry import create_agent_with_retry
+    from grok_fast_with_retry import create_agent_with_retry
 
     agent = await create_agent_with_retry(max_attempts=5)
     success, result, stats = await agent.execute_with_retry(
@@ -24,7 +24,7 @@ from langgraph.types import Command
 from langgraph.graph.state import CompiledStateGraph
 
 # Import the base agent
-from mcp_agent_grok_fast import agent as create_base_agent
+from grok_fast_firecrawl_mcp import agent as create_base_agent
 
 
 class RetryPolicy:

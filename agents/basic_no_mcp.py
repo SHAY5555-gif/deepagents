@@ -10,7 +10,7 @@ async def agent():
     """Simple agent without MCP - just file system tools"""
 
     MODEL_NAME = "grok-4-1-fast-reasoning-latest"
-    print(f"\n[simple_agent_no_mcp] Creating agent with model: {MODEL_NAME}")
+    print(f"\n[basic_no_mcp] Creating agent with model: {MODEL_NAME}")
     print(f"No MCP tools - only built-in file system tools\n")
 
     model = ChatXAI(

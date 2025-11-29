@@ -1,7 +1,7 @@
 {
   "dependencies": ["."],
   "graphs": {
-    "simple_agent_no_mcp": "./agents/simple_agent_no_mcp.py:agent"
+    "basic_no_mcp": "./agents/basic_no_mcp.py:agent"
   },
   "env": ".env"
 }
