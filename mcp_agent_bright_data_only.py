@@ -81,7 +81,7 @@ async def get_mcp_tools():
             _mcp_client = MultiServerMCPClient({
                 # Bright Data MCP - Web Scraping and Search
                 "bright_data": {
-                    "url": "https://mcp.brightdata.com/mcp?token=edebeabb58a1ada040be8c1f67fb707e797a1810bf874285698e03e8771861a5",
+                    "url": "https://mcp.brightdata.com/mcp?token=3d84444e-b3de-4587-9248-f4fcda7a8016",
                     "transport": "streamable_http",  # SSE transport
                     "timeout": timedelta(seconds=45),  # 45 seconds timeout
                     "sse_read_timeout": timedelta(seconds=45),  # 45 seconds SSE read timeout

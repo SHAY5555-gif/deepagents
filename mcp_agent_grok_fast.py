@@ -1,8 +1,8 @@
 """
-Async Deep Agent with XAI Grok-4 FAST REASONING MODEL and Chrome DevTools MCP
+Async Deep Agent with XAI Grok-4.1 FAST REASONING MODEL and Chrome DevTools MCP
 ULTRA-FAST REASONING + MAXIMUM CAPABILITIES!
 
-This agent uses Grok-4 Fast Reasoning (grok-4-fast-reasoning-latest) from XAI:
+This agent uses Grok-4.1 Fast Reasoning (grok-4-1-fast-reasoning-latest) from XAI:
 - FAST reasoning model with extended thinking capabilities
 - 2M token context window (MASSIVE - 8x larger than Grok-4!)
 - 128,000 max output tokens
@@ -124,9 +124,9 @@ async def get_mcp_tools():
 
 
 async def agent():
-    """Async factory function for LangGraph Studio using GROK-4 FAST REASONING MODEL.
+    """Async factory function for LangGraph Studio using GROK-4.1 FAST REASONING MODEL.
 
-    Grok-4 Fast Reasoning advantages (grok-4-fast-reasoning-latest):
+    Grok-4.1 Fast Reasoning advantages (grok-4-1-fast-reasoning-latest):
     - FAST reasoning model with extended thinking
     - 2M token context window (MASSIVE!)
     - 128,000 max output tokens
@@ -335,8 +335,8 @@ NEVER. GIVE. UP.
 
 These are real tools connected to a live Chrome browser via Smithery!"""
 
-    # Create XAI Grok-4 Fast Reasoning MODEL with MAXIMUM capabilities
-    # This is Grok-4 Fast Reasoning (grok-4-fast-reasoning-latest):
+    # Create XAI Grok-4.1 Fast Reasoning MODEL with MAXIMUM capabilities
+    # This is Grok-4.1 Fast Reasoning (grok-4-1-fast-reasoning-latest):
     # - 2M token context window (MASSIVE!)
     # - 128,000 max output tokens
     # - Fast reasoning with extended thinking
@@ -344,8 +344,14 @@ These are real tools connected to a live Chrome browser via Smithery!"""
     # - 4M tokens per minute throughput
     # - Function calling, live search, image inputs
     # - Fewer restrictions and more direct responses than Claude
+
+    MODEL_NAME = "grok-4-1-fast-reasoning-latest"
+    print(f"\n{'='*80}")
+    print(f"[mcp_agent_grok_fast] Creating agent with model: {MODEL_NAME}")
+    print(f"{'='*80}\n")
+
     model = ChatXAI(
-        model="grok-4-fast-reasoning-latest",  # Fast Reasoning model
+        model=MODEL_NAME,  # Fast Reasoning model - UPDATED to 4.1
         max_tokens=128000,  # MAXIMUM output tokens (128K!)
         temperature=1.0,  # Full flexibility
         # Note: Fast reasoning model - combines speed with deep thinking
