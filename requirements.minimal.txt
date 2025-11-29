@@ -1,0 +1,12 @@
+# Minimal requirements - only packages not provided by base image
+# The langchain/langgraph-api base image already includes most LangChain packages
+
+# MCP adapters (not in base image)
+langchain-mcp-adapters>=0.1.11
+
+# Additional model providers
+langchain-xai>=1.0.0
+
+# Utilities
+wcmatch
+python-dotenv
