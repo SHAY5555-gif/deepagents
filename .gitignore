@@ -1,9 +1,53 @@
+# Python
 __pycache__/
 *.py[cod]
-.env
-sse_debug.txt
-test_query.json
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
 .venv/
+.venv310/
 .venv311/
+venv/
+
+# Environment and secrets
+.env
+.env.*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Build artifacts
+.expo/
+.langgraph_api/
+package/
+node_modules/
+
+# Logs and temp files
+*.log
+*.err
+*_output.txt
+*.backup
+
+# Downloaded packages and binaries
+*.tgz
+*.exe
+*.zip
+
+# Test output files
+test_*.json
+*_output.txt
+services_full.json
+
+# Platform specific
 .vercel/
 nul
+tmp_perplexity_ai/
+tmp_perplexity/package/
+
+# Backup files
+*.bak
+*~

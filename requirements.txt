@@ -14,3 +14,11 @@ uvicorn[standard]==0.34.0
 
 # LangChain integration
 langchain-xai
+langchain-cerebras
+
+# Vercel AI Gateway integration
+openai>=1.50.0
+python-dotenv>=1.0.0
+
+# FireCrawl SDK for web scraping
+firecrawl-py>=4.6.0

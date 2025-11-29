@@ -36,7 +36,7 @@ RUN pip install --no-cache-dir --compile \
     -e .
 
 # Set environment variables for LangGraph agents
-ENV LANGSERVE_GRAPHS='{"mcp_agent_async": "/deps/__outer_default/mcp_agent_async.py:agent", "simple_parallel_agent": "/deps/__outer_default/simple_parallel_agent.py:agent", "mcp_agent_example": "/deps/__outer_default/mcp_agent_example.py:agent", "mcp_agent_grok": "/deps/__outer_default/mcp_agent_grok.py:agent", "mcp_agent_grok_fast": "/deps/__outer_default/mcp_agent_grok_fast.py:agent", "mcp_agent_grok_fast_with_retry": "/deps/__outer_default/mcp_agent_grok_fast_with_retry.py:agent", "mcp_agent_bright_data_only": "/deps/__outer_default/mcp_agent_bright_data_only.py:agent"}'
+ENV LANGSERVE_GRAPHS='{"mcp_agent_async": "/deps/__outer_default/mcp_agent_async.py:agent", "simple_parallel_agent": "/deps/__outer_default/simple_parallel_agent.py:agent", "mcp_agent_example": "/deps/__outer_default/mcp_agent_example.py:agent", "mcp_agent_grok": "/deps/__outer_default/mcp_agent_grok.py:agent", "mcp_agent_grok_fast": "/deps/__outer_default/mcp_agent_grok_fast.py:agent", "mcp_agent_grok_fast_with_retry": "/deps/__outer_default/mcp_agent_grok_fast_with_retry.py:agent", "mcp_agent_bright_data_only": "/deps/__outer_default/mcp_agent_bright_data_only.py:agent", "mcp_agent_bright_data_glm": "/deps/__outer_default/mcp_agent_bright_data_glm.py:agent"}'
 
 # Python optimizations for faster startup
 ENV PYTHONUNBUFFERED=1 \
