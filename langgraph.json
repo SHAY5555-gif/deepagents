@@ -1,7 +1,8 @@
 {
   "dependencies": ["."],
   "graphs": {
-    "basic_no_mcp": "./agents/basic_no_mcp.py:agent"
+    "zamar": "./agents/zamar/grok_fast_firecrawl_sdk.py:agent",
+    "zamar_cerebras": "./agents/zamar/cerebras_zamar.py:agent"
   },
   "env": ".env"
 }
