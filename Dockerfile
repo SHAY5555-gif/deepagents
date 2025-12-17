@@ -36,7 +36,8 @@ RUN pip install --no-cache-dir --compile \
     -e .
 
 # Set environment variables for LangGraph agents
-ENV LANGSERVE_GRAPHS='{"mcp_agent_async": "/deps/__outer_default/mcp_agent_async.py:agent", "simple_parallel_agent": "/deps/__outer_default/simple_parallel_agent.py:agent", "mcp_agent_example": "/deps/__outer_default/mcp_agent_example.py:agent", "mcp_agent_grok": "/deps/__outer_default/mcp_agent_grok.py:agent", "mcp_agent_grok_fast": "/deps/__outer_default/mcp_agent_grok_fast.py:agent", "mcp_agent_grok_fast_with_retry": "/deps/__outer_default/mcp_agent_grok_fast_with_retry.py:agent", "mcp_agent_bright_data_only": "/deps/__outer_default/mcp_agent_bright_data_only.py:agent", "mcp_agent_bright_data_glm": "/deps/__outer_default/mcp_agent_bright_data_glm.py:agent"}'
+# Updated paths to match actual file locations in agents/ folder
+ENV LANGSERVE_GRAPHS='{"cerebras_brightdata_genius": "/deps/__outer_default/agents/cerebras_brightdata_genius.py:agent", "cerebras_zamar": "/deps/__outer_default/agents/zamar/cerebras_zamar.py:agent", "glm_cerebras": "/deps/__outer_default/agents/glm_cerebras.py:agent", "grok_bright_data": "/deps/__outer_default/agents/grok_bright_data.py:agent", "basic_no_mcp": "/deps/__outer_default/agents/basic_no_mcp.py:agent"}'
 
 # Python optimizations for faster startup
 ENV PYTHONUNBUFFERED=1 \

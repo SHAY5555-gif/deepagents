@@ -22,3 +22,12 @@ python-dotenv>=1.0.0
 
 # FireCrawl SDK for web scraping
 firecrawl-py>=4.6.0
+
+# BrightData SDK for enterprise web scraping and search
+brightdata-sdk>=1.1.0
+
+# Genius API for song lyrics
+requests>=2.31.0
+
+# Async utilities for nested event loops
+nest_asyncio>=1.5.0
