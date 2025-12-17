@@ -34,6 +34,10 @@ try:
     nest_asyncio.apply()
 except ImportError:
     pass  # Will use fallback in _run_async
+except ValueError:
+    # uvloop (used by Railway/LangGraph) can't be patched - that's OK
+    # The async calls will work natively without nest_asyncio
+    pass
 
 # Configure logging
 logger = logging.getLogger(__name__)
