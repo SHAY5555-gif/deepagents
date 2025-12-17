@@ -27,6 +27,14 @@ from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from deepagents import create_deep_agent
 
+# Apply nest_asyncio EARLY to allow nested event loops
+# This is critical for sub-agents that run in async context
+try:
+    import nest_asyncio
+    nest_asyncio.apply()
+except ImportError:
+    pass  # Will use fallback in _run_async
+
 # Configure logging
 logger = logging.getLogger(__name__)
 
@@ -129,31 +137,24 @@ def get_brightdata_client():
 
 
 def _run_async(coro):
-    """Run async coroutine safely, handling nested event loops."""
+    """Run async coroutine safely, handling nested event loops.
+
+    nest_asyncio is applied at module load time, so asyncio.run()
+    should work even from within an async context (sub-agents).
+    """
     try:
-        # Try to get existing event loop
-        loop = asyncio.get_running_loop()
-        # We're in an async context - need to use nest_asyncio or create task
-        import nest_asyncio
-        nest_asyncio.apply()
+        # With nest_asyncio applied globally, asyncio.run() should work
+        # even when there's already a running event loop
         return asyncio.run(coro)
-    except RuntimeError:
-        # No running event loop - safe to use asyncio.run()
-        return asyncio.run(coro)
-    except ImportError:
-        # nest_asyncio not available, try alternative approach
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # Create a new loop in a thread
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(asyncio.run, coro)
-                    return future.result(timeout=60)
-            else:
-                return loop.run_until_complete(coro)
-        except Exception:
-            return asyncio.run(coro)
+    except RuntimeError as e:
+        # Fallback: If asyncio.run() still fails (nest_asyncio not loaded),
+        # try running in a separate thread
+        if "cannot be called from a running event loop" in str(e):
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(asyncio.run, coro)
+                return future.result(timeout=120)  # 2 minute timeout for web requests
+        raise
 
 
 async def _search_google_async(client, query: str, num_results: int):
