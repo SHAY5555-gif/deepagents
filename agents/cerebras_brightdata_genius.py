@@ -140,37 +140,93 @@ def get_brightdata_client():
     return _brightdata_client
 
 
-def _run_async(coro):
-    """Run async coroutine safely, handling nested event loops.
+def _run_sync_in_thread(func, *args, **kwargs):
+    """Run a sync function in a thread to avoid uvloop conflicts.
 
-    nest_asyncio is applied at module load time, so asyncio.run()
-    should work even from within an async context (sub-agents).
+    The BrightData SDK internally uses nest_asyncio which doesn't work with uvloop
+    (used by Railway/LangGraph). By running in a separate thread, the SDK can
+    create its own event loop without uvloop interference.
     """
-    try:
-        # With nest_asyncio applied globally, asyncio.run() should work
-        # even when there's already a running event loop
-        return asyncio.run(coro)
-    except RuntimeError as e:
-        # Fallback: If asyncio.run() still fails (nest_asyncio not loaded),
-        # try running in a separate thread
-        if "cannot be called from a running event loop" in str(e):
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(asyncio.run, coro)
-                return future.result(timeout=120)  # 2 minute timeout for web requests
-        raise
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(func, *args, **kwargs)
+        return future.result(timeout=120)  # 2 minute timeout
 
 
-async def _search_google_async(client, query: str, num_results: int):
-    """Async helper that properly initializes engine context for search."""
-    async with client.engine:
-        return await client.search.google_async(query=query, num_results=num_results)
+def _run_search_in_thread(search_type: str, query: str, num_results: int):
+    """Run BrightData search in a thread with its own event loop and client.
+
+    Creates a fresh BrightData client and event loop in a separate thread to
+    avoid uvloop compatibility issues. This ensures the async search can run
+    without interference from the main uvloop.
+    """
+    import concurrent.futures
+
+    def _run():
+        # Create a fresh client in this thread
+        api_token = os.getenv("BRIGHTDATA_API_TOKEN")
+        if not api_token:
+            return None
+
+        serp_zone = os.getenv("SERP_ZONE", "serp_api1")
+
+        try:
+            from brightdata import BrightDataClient
+            client = BrightDataClient(token=api_token, serp_zone=serp_zone)
+        except Exception as e:
+            logger.error(f"[BRIGHTDATA] Failed to create client in thread: {e}")
+            return None
+
+        # Create a new event loop in this thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            async def search():
+                async with client.engine:
+                    if search_type == "google":
+                        return await client.search.google_async(query=query, num_results=num_results)
+                    elif search_type == "bing":
+                        return await client.search.bing_async(query=query, num_results=num_results)
+                    else:
+                        raise ValueError(f"Unknown search type: {search_type}")
+
+            return loop.run_until_complete(search())
+        finally:
+            loop.close()
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(_run)
+        return future.result(timeout=120)
 
 
-async def _search_bing_async(client, query: str, num_results: int):
-    """Async helper that properly initializes engine context for search."""
-    async with client.engine:
-        return await client.search.bing_async(query=query, num_results=num_results)
+def _run_scrape_in_thread(url: str, response_format: str = "raw"):
+    """Run BrightData scrape in a thread with its own client.
+
+    Creates a fresh BrightData client in a separate thread to avoid uvloop
+    compatibility issues.
+    """
+    import concurrent.futures
+
+    def _run():
+        # Create a fresh client in this thread
+        api_token = os.getenv("BRIGHTDATA_API_TOKEN")
+        if not api_token:
+            return None
+
+        web_unlocker_zone = os.getenv("WEB_UNLOCKER_ZONE")
+
+        try:
+            from brightdata import BrightDataClient
+            client = BrightDataClient(token=api_token, web_unlocker_zone=web_unlocker_zone)
+        except Exception as e:
+            logger.error(f"[BRIGHTDATA] Failed to create client in thread: {e}")
+            return None
+
+        return client.scrape_url(url=url, response_format=response_format)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(_run)
+        return future.result(timeout=120)
 
 
 @tool
@@ -190,12 +246,15 @@ def brightdata_search_google(
         JSON string with search results including titles, URLs, and snippets
     """
     try:
-        client = get_brightdata_client()
-        if not client:
-            return json.dumps({"success": False, "error": "BrightData client not initialized"})
+        if not os.getenv("BRIGHTDATA_API_TOKEN"):
+            return json.dumps({"success": False, "error": "BRIGHTDATA_API_TOKEN not set"})
 
         logger.info(f"[BRIGHTDATA] Searching Google for: {query}")
-        result = _run_async(_search_google_async(client, query, num_results))
+        # Run search in a separate thread to avoid uvloop conflicts
+        result = _run_search_in_thread("google", query, num_results)
+
+        if result is None:
+            return json.dumps({"success": False, "error": "Failed to execute search"})
 
         # Format results from SearchResult object
         formatted_results = []
@@ -225,6 +284,7 @@ def brightdata_search_google(
         }, ensure_ascii=False, indent=2)
 
     except Exception as e:
+        logger.error(f"[BRIGHTDATA] Google search error: {type(e).__name__}: {str(e)}")
         return json.dumps({
             'success': False,
             'error': f'{type(e).__name__}: {str(e)}'
@@ -246,12 +306,15 @@ def brightdata_search_bing(
         JSON string with search results including titles, URLs, and snippets
     """
     try:
-        client = get_brightdata_client()
-        if not client:
-            return json.dumps({"success": False, "error": "BrightData client not initialized"})
+        if not os.getenv("BRIGHTDATA_API_TOKEN"):
+            return json.dumps({"success": False, "error": "BRIGHTDATA_API_TOKEN not set"})
 
         logger.info(f"[BRIGHTDATA] Searching Bing for: {query}")
-        result = _run_async(_search_bing_async(client, query, num_results))
+        # Run search in a separate thread to avoid uvloop conflicts
+        result = _run_search_in_thread("bing", query, num_results)
+
+        if result is None:
+            return json.dumps({"success": False, "error": "Failed to execute search"})
 
         formatted_results = []
         if hasattr(result, 'data') and result.data:
@@ -280,6 +343,7 @@ def brightdata_search_bing(
         }, ensure_ascii=False, indent=2)
 
     except Exception as e:
+        logger.error(f"[BRIGHTDATA] Bing search error: {type(e).__name__}: {str(e)}")
         return json.dumps({
             'success': False,
             'error': f'{type(e).__name__}: {str(e)}'
@@ -301,13 +365,16 @@ def brightdata_scrape_url(
         JSON string with scraped content
     """
     try:
-        client = get_brightdata_client()
-        if not client:
-            return json.dumps({"success": False, "error": "BrightData client not initialized"})
+        if not os.getenv("BRIGHTDATA_API_TOKEN"):
+            return json.dumps({"success": False, "error": "BRIGHTDATA_API_TOKEN not set"})
 
         logger.info(f"[BRIGHTDATA] Scraping URL: {url}")
 
-        result = client.scrape_url(url=url, response_format=response_format)
+        # Run scrape in a separate thread to avoid uvloop conflicts
+        result = _run_scrape_in_thread(url, response_format)
+
+        if result is None:
+            return json.dumps({"success": False, "url": url, "error": "Failed to execute scrape"})
 
         if hasattr(result, 'success') and result.success is False:
             error_msg = getattr(result, 'error', 'Unknown error')
@@ -366,13 +433,16 @@ def brightdata_crawl_website(
         JSON string with crawled content
     """
     try:
-        client = get_brightdata_client()
-        if not client:
-            return json.dumps({"success": False, "error": "BrightData client not initialized"})
+        if not os.getenv("BRIGHTDATA_API_TOKEN"):
+            return json.dumps({"success": False, "error": "BRIGHTDATA_API_TOKEN not set"})
 
         logger.info(f"[BRIGHTDATA] Crawling website: {url}")
 
-        result = client.scrape_url(url=url)
+        # Run scrape in a separate thread to avoid uvloop conflicts
+        result = _run_scrape_in_thread(url, "raw")
+
+        if result is None:
+            return json.dumps({"success": False, "url": url, "error": "Failed to execute crawl"})
 
         if hasattr(result, 'success') and result.success is False:
             error_msg = getattr(result, 'error', 'Unknown error')
@@ -429,13 +499,16 @@ def brightdata_extract_data(
         JSON string with extracted structured data
     """
     try:
-        client = get_brightdata_client()
-        if not client:
-            return json.dumps({"success": False, "error": "BrightData client not initialized"})
+        if not os.getenv("BRIGHTDATA_API_TOKEN"):
+            return json.dumps({"success": False, "error": "BRIGHTDATA_API_TOKEN not set"})
 
         logger.info(f"[BRIGHTDATA] Extracting data from: {url}")
 
-        result = client.scrape_url(url=url)
+        # Run scrape in a separate thread to avoid uvloop conflicts
+        result = _run_scrape_in_thread(url, "raw")
+
+        if result is None:
+            return json.dumps({"success": False, "url": url, "error": "Failed to execute extraction"})
 
         if hasattr(result, 'success') and result.success is False:
             error_msg = getattr(result, 'error', 'Unknown error')
@@ -475,6 +548,37 @@ def brightdata_extract_data(
         }, ensure_ascii=False)
 
 
+def _run_linkedin_search_in_thread(query: str, search_type: str):
+    """Run LinkedIn search in a thread with its own client.
+
+    Creates a fresh BrightData client in a separate thread to avoid uvloop
+    compatibility issues.
+    """
+    import concurrent.futures
+
+    def _run():
+        # Create a fresh client in this thread
+        api_token = os.getenv("BRIGHTDATA_API_TOKEN")
+        if not api_token:
+            return None
+
+        try:
+            from brightdata import BrightDataClient
+            client = BrightDataClient(token=api_token)
+        except Exception as e:
+            logger.error(f"[BRIGHTDATA] Failed to create client in thread: {e}")
+            return None
+
+        if search_type == "jobs":
+            return client.search.linkedin.jobs(keyword=query)
+        else:
+            return client.search.linkedin.profiles(firstName=query)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(_run)
+        return future.result(timeout=120)
+
+
 @tool
 def brightdata_search_linkedin(
     query: str,
@@ -490,17 +594,16 @@ def brightdata_search_linkedin(
         JSON string with LinkedIn search results
     """
     try:
-        client = get_brightdata_client()
-        if not client:
-            return json.dumps({"success": False, "error": "BrightData client not initialized"})
+        if not os.getenv("BRIGHTDATA_API_TOKEN"):
+            return json.dumps({"success": False, "error": "BRIGHTDATA_API_TOKEN not set"})
 
         logger.info(f"[BRIGHTDATA] Searching LinkedIn for: {query} (type: {search_type})")
 
-        result = None
-        if search_type == "jobs":
-            result = client.search.linkedin.jobs(keyword=query)
-        else:
-            result = client.search.linkedin.profiles(firstName=query)
+        # Run LinkedIn search in a separate thread to avoid uvloop conflicts
+        result = _run_linkedin_search_in_thread(query, search_type)
+
+        if result is None:
+            return json.dumps({"success": False, "error": "Failed to execute LinkedIn search"})
 
         results_data = []
         if hasattr(result, 'data') and result.data:
@@ -518,6 +621,7 @@ def brightdata_search_linkedin(
         }, ensure_ascii=False, indent=2)
 
     except Exception as e:
+        logger.error(f"[BRIGHTDATA] LinkedIn search error: {type(e).__name__}: {str(e)}")
         return json.dumps({
             'success': False,
             'error': f'{type(e).__name__}: {str(e)}'
