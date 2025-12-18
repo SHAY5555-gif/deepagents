@@ -1,6 +1,7 @@
 {
   "dependencies": ["."],
   "graphs": {
+    "gemini3_flash": "./agents/gemini3_flash_brightdata_genius.py:agent",
     "cerebras_brightdata_genius": "./agents/cerebras_brightdata_genius.py:agent",
     "zamar": "./agents/zamar/grok_fast_firecrawl_sdk.py:agent",
     "zamar_cerebras": "./agents/zamar/cerebras_zamar.py:agent",
