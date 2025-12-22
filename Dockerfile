@@ -37,7 +37,7 @@ RUN pip install --no-cache-dir --compile \
 
 # Set environment variables for LangGraph agents
 # Updated paths to match actual file locations in agents/ folder
-ENV LANGSERVE_GRAPHS='{"cerebras_brightdata_genius": "/deps/__outer_default/agents/cerebras_brightdata_genius.py:agent", "cerebras_zamar": "/deps/__outer_default/agents/zamar/cerebras_zamar.py:agent", "glm_cerebras": "/deps/__outer_default/agents/glm_cerebras.py:agent", "grok_bright_data": "/deps/__outer_default/agents/grok_bright_data.py:agent", "basic_no_mcp": "/deps/__outer_default/agents/basic_no_mcp.py:agent"}'
+ENV LANGSERVE_GRAPHS='{"genius_lyrics": "/deps/__outer_default/agents/zamar/genius_lyrics_agent.py:agent", "cerebras_brightdata_genius": "/deps/__outer_default/agents/cerebras_brightdata_genius.py:agent", "cerebras_zamar": "/deps/__outer_default/agents/zamar/cerebras_zamar.py:agent", "gemini3_flash": "/deps/__outer_default/agents/gemini3_flash_brightdata_genius.py:agent", "browser_agent": "/deps/__outer_default/agents/zamar/cerebras_browser_agent.py:agent"}'
 
 # Python optimizations for faster startup
 ENV PYTHONUNBUFFERED=1 \
