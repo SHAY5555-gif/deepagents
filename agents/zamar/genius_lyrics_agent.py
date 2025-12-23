@@ -173,11 +173,11 @@ def _extract_lyrics_from_html(html: str) -> Dict[str, Any]:
 
 
 def _scrape_url_with_brightdata(url: str) -> Dict[str, Any]:
-    """Scrape a URL using BrightData Web Unlocker."""
+    """Scrape a URL using BrightData Web Unlocker via bdclient."""
     try:
-        from brightdata import WebUnlocker
+        from brightdata import bdclient
     except ImportError:
-        return {"success": False, "error": "BrightData SDK not installed"}
+        return {"success": False, "error": "BrightData SDK not installed. Install with: pip install brightdata>=1.1.0"}
 
     api_token = os.getenv("BRIGHTDATA_API_TOKEN")
     if not api_token:
@@ -185,24 +185,36 @@ def _scrape_url_with_brightdata(url: str) -> Dict[str, Any]:
 
     web_unlocker_zone = os.getenv("WEB_UNLOCKER_ZONE", "mcp_unlocker")
 
-    logger.info(f"[GENIUS] Scraping URL: {url}")
+    logger.info(f"[GENIUS] Scraping URL: {url} with zone: {web_unlocker_zone}")
 
     try:
-        client = WebUnlocker(
-            BRIGHTDATA_WEBUNLOCKER_BEARER=api_token,
-            ZONE_STRING=web_unlocker_zone
+        # Create bdclient with web_unlocker zone for bot-auth bypass
+        client = bdclient(api_token=api_token, web_unlocker_zone=web_unlocker_zone)
+
+        # Use scrape method with web_unlocker zone
+        result = client.scrape(
+            url=url,
+            zone=web_unlocker_zone,
+            response_format="raw",
+            method="GET"
         )
 
-        result = client.get_source_safe(url)
+        # Extract HTML from result
+        if result is None:
+            return {"success": False, "error": "BrightData scrape returned None", "url": url}
 
-        if not result.success:
-            return {
-                "success": False,
-                "error": f"BrightData scrape failed: {result.error}",
-                "url": url
-            }
+        # Handle SDK response format: {'status_code', 'headers', 'body'}
+        if isinstance(result, dict):
+            html = result.get('body', '')
+            status_code = result.get('status_code', 0)
+            if status_code >= 400:
+                return {"success": False, "error": f"HTTP {status_code}", "url": url}
+        else:
+            html = str(result)
 
-        html = result.data
+        if not html:
+            return {"success": False, "error": "Empty response from BrightData", "url": url}
+
         logger.info(f"[GENIUS] Got HTML: {len(html)} chars")
 
         # Check for block pages
@@ -217,6 +229,7 @@ def _scrape_url_with_brightdata(url: str) -> Dict[str, Any]:
         return lyrics_data
 
     except Exception as e:
+        logger.error(f"[GENIUS] Scrape error: {e}")
         return {"success": False, "error": f"{type(e).__name__}: {str(e)}", "url": url}
 
 
