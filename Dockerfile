@@ -9,7 +9,11 @@ WORKDIR /tmp
 # Copy ONLY dependency files first (maximize cache hit rate)
 COPY requirements.txt pyproject.toml ./
 
-# Install dependencies with optimizations:
+# Install BrightData SDK FIRST without constraints
+# (constraints file from base image conflicts with brightdata-sdk)
+RUN pip install --no-cache-dir --compile brightdata-sdk==2.0.0
+
+# Install remaining dependencies with constraints:
 # --no-cache-dir: Don't store cache (reduces image size)
 # --compile: Pre-compile Python files (faster startup)
 # This layer will be cached unless requirements change
