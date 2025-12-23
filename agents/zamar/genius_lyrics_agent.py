@@ -87,8 +87,76 @@ def _find_best_match(results: List[Dict], song_name: str, artist: Optional[str] 
 # BrightData Scraping
 # =============================================================================
 
+def _detect_language(text: str) -> str:
+    """Detect the language of text based on character analysis.
+
+    Detects: Hebrew (he), Arabic (ar), Russian (ru), Chinese (zh),
+    Korean (ko), and defaults to English (en).
+
+    Args:
+        text: The text to analyze
+
+    Returns:
+        ISO 639-1 language code (e.g., 'he', 'en', 'ar')
+    """
+    if not text:
+        return "en"
+
+    # Count character types
+    hebrew_count = 0
+    arabic_count = 0
+    cyrillic_count = 0
+    cjk_count = 0
+    hangul_count = 0
+
+    for char in text:
+        code = ord(char)
+        # Hebrew: U+0590 to U+05FF
+        if 0x0590 <= code <= 0x05FF:
+            hebrew_count += 1
+        # Arabic: U+0600 to U+06FF
+        elif 0x0600 <= code <= 0x06FF:
+            arabic_count += 1
+        # Cyrillic: U+0400 to U+04FF
+        elif 0x0400 <= code <= 0x04FF:
+            cyrillic_count += 1
+        # CJK (Chinese/Japanese): U+4E00 to U+9FFF
+        elif 0x4E00 <= code <= 0x9FFF:
+            cjk_count += 1
+        # Hangul (Korean): U+AC00 to U+D7AF
+        elif 0xAC00 <= code <= 0xD7AF:
+            hangul_count += 1
+
+    # Determine language by highest count
+    counts = {
+        "he": hebrew_count,
+        "ar": arabic_count,
+        "ru": cyrillic_count,
+        "zh": cjk_count,
+        "ko": hangul_count,
+    }
+
+    max_lang = max(counts, key=counts.get)
+    if counts[max_lang] > 10:  # Threshold for non-Latin languages
+        return max_lang
+
+    # Default to English for Latin-based text
+    return "en"
+
+
 def _clean_lyrics_text(text: str) -> str:
-    """Clean up lyrics text by removing header noise."""
+    """Clean up lyrics text by removing header noise from Genius.
+
+    Removes patterns like:
+    - "4 ContributorsSong Title Lyrics..."
+    - "X ContributorsSong Name - שם השיר Lyrics..."
+    """
+    # Remove Genius header pattern: "X Contributors...Lyrics"
+    # This pattern matches: number + "Contributor(s)" + anything + "Lyrics"
+    header_pattern = r'^\d+\s*Contributor[s]?.*?Lyrics'
+    text = re.sub(header_pattern, '', text, flags=re.IGNORECASE)
+
+    # Also try to find actual lyrics start markers
     lyrics_start_patterns = [
         r'\[(?:Intro|Verse|Chorus|Bridge|Pre-Chorus|Outro|Hook|Refrain|Instrumental)',
         r'\n[A-Z][a-z]',
@@ -318,22 +386,49 @@ def get_lyrics(song_name: str, artist: Optional[str] = None) -> str:
 
     This tool:
     1. Searches Genius API for the song
-    2. Shows all search results found
-    3. Picks the best match
-    4. Scrapes lyrics using BrightData
+    2. Picks the best match
+    3. Scrapes lyrics using BrightData
+    4. Detects the language automatically
 
     Args:
         song_name: Name of the song
         artist: Artist name (optional but recommended)
 
     Returns:
-        Full process with search results and lyrics
+        JSON array with structured song data:
+        [
+          {
+            "title": "Song Title",
+            "artist": "Artist Name",
+            "lyrics": "Full lyrics text...",
+            "language": "he"  // ISO 639-1 code (he, en, ar, ru, zh, ko)
+          }
+        ]
     """
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(_search_and_scrape, song_name, artist)
         result = future.result(timeout=120)
 
-    return json.dumps(result, ensure_ascii=False, indent=2)
+    # Convert to structured output format
+    final = result.get("final_result", {})
+
+    if final.get("success"):
+        lyrics_text = final.get("lyrics") or ""
+        language = _detect_language(lyrics_text)
+
+        structured_result = [{
+            "title": final.get("title"),
+            "artist": final.get("artist"),
+            "lyrics": lyrics_text,
+            "language": language
+        }]
+        return json.dumps(structured_result, ensure_ascii=False, indent=2)
+    else:
+        # Return error in consistent format
+        return json.dumps({
+            "success": False,
+            "error": final.get("error", "Unknown error")
+        }, ensure_ascii=False, indent=2)
 
 
 # =============================================================================
@@ -346,17 +441,27 @@ RULES:
 1. When the user gives you a song name - IMMEDIATELY use the get_lyrics tool
 2. DO NOT ask clarifying questions - just search
 3. If the user provides an artist name, use it. If not, search without it.
-4. After getting results, show the user:
-   - The search results from Genius API (step1_search)
-   - Which song was selected (step2_match)
-   - The final lyrics (final_result)
 
 Examples:
 - User: "Hello by Adele" -> Use get_lyrics(song_name="Hello", artist="Adele")
 - User: "Bohemian Rhapsody" -> Use get_lyrics(song_name="Bohemian Rhapsody")
 - User: "Queen - We Will Rock You" -> Use get_lyrics(song_name="We Will Rock You", artist="Queen")
 
-Just find the lyrics and show the full process. That's it.
+CRITICAL - OUTPUT FORMAT:
+Your FINAL response MUST be ONLY the structured JSON array, nothing else.
+Do NOT add any text, explanation, or markdown formatting.
+Just return the raw JSON exactly as received from the tool:
+
+[
+  {
+    "title": "Song Title",
+    "artist": "Artist Name",
+    "lyrics": "Full lyrics...",
+    "language": "he"
+  }
+]
+
+If the tool returns an error, return the error JSON as-is.
 """
 
 

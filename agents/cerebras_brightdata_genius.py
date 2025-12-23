@@ -200,10 +200,11 @@ def _run_search_in_thread(search_type: str, query: str, num_results: int):
 
 
 def _run_scrape_in_thread(url: str, response_format: str = "raw"):
-    """Run BrightData scrape in a thread with its own client.
+    """Run BrightData scrape in a thread with its own event loop and client.
 
-    Creates a fresh BrightData client in a separate thread to avoid uvloop
-    compatibility issues.
+    Creates a fresh BrightData client and event loop in a separate thread to
+    avoid uvloop compatibility issues. The SDK's sync methods internally use
+    asyncio, so we need our own loop to avoid uvloop conflicts.
     """
     import concurrent.futures
 
@@ -222,7 +223,18 @@ def _run_scrape_in_thread(url: str, response_format: str = "raw"):
             logger.error(f"[BRIGHTDATA] Failed to create client in thread: {e}")
             return None
 
-        return client.scrape_url(url=url, response_format=response_format)
+        # Create a new event loop in this thread for the SDK's internal async calls
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return client.scrape_url(
+                url=url,
+                zone=web_unlocker_zone,
+                response_format=response_format,
+                method="GET"
+            )
+        finally:
+            loop.close()
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(_run)
@@ -841,6 +853,347 @@ def genius_get_artist(artist_id: int) -> str:
 
 
 # ============================================================================
+# Combined Tool: Get Lyrics in ONE call (Search + Scrape)
+# ============================================================================
+
+def _extract_lyrics_from_html(html: str) -> dict:
+    """Extract lyrics from Genius page HTML."""
+    try:
+        from bs4 import BeautifulSoup
+    except ImportError:
+        return {"success": False, "error": "beautifulsoup4 not installed"}
+
+    soup = BeautifulSoup(html, 'html.parser')
+    result = {"success": False, "title": None, "artist": None, "lyrics": None}
+
+    # Extract title and artist from meta tag
+    og_title = soup.find('meta', property='og:title')
+    if og_title and og_title.get('content'):
+        title_content = og_title['content']
+        if ' by ' in title_content:
+            parts = title_content.split(' by ')
+            result["title"] = parts[0].strip()
+            result["artist"] = parts[1].strip()
+
+    # Extract lyrics from data-lyrics-container elements
+    lyrics_containers = soup.find_all('div', attrs={'data-lyrics-container': 'true'})
+
+    if lyrics_containers:
+        lyrics_parts = []
+        for container in lyrics_containers:
+            for br in container.find_all('br'):
+                br.replace_with('\n')
+            text = container.get_text(separator='')
+            lyrics_parts.append(text.strip())
+
+        raw_lyrics = '\n\n'.join(lyrics_parts)
+
+        # Clean up header noise (Contributors, Translations, etc.)
+        import re
+        for pattern in [r'\[(?:Intro|Verse|Chorus|Bridge|Pre-Chorus|Outro|Hook)', r'\n[A-Z][a-z]']:
+            match = re.search(pattern, raw_lyrics, re.IGNORECASE)
+            if match:
+                start_pos = match.start()
+                if raw_lyrics[start_pos] == '\n':
+                    start_pos += 1
+                raw_lyrics = raw_lyrics[start_pos:]
+                break
+
+        result["lyrics"] = raw_lyrics.strip()
+        result["success"] = True
+
+    return result
+
+
+def _ai_analyze_genius_results(query: str, results: list, artist_hint: Optional[str] = None) -> dict:
+    """Use AI to analyze Genius search results and pick the best match.
+
+    Args:
+        query: The original search query
+        results: List of search result hits from Genius API
+        artist_hint: Optional artist name hint from user
+
+    Returns:
+        The best matching result dict, or None if no good match
+    """
+    if not results:
+        return None
+
+    # If only one result, return it
+    if len(results) == 1:
+        return results[0]["result"]
+
+    # Format results for AI analysis
+    formatted_results = []
+    for i, hit in enumerate(results[:5]):  # Limit to top 5
+        song = hit["result"]
+        formatted_results.append({
+            "index": i,
+            "title": song.get("title", "Unknown"),
+            "artist": song.get("primary_artist", {}).get("name", "Unknown"),
+            "url": song.get("url", ""),
+        })
+
+    # Create a simple prompt that works well with Cerebras
+    results_text = "\n".join([
+        f"{r['index']}: \"{r['title']}\" by {r['artist']}"
+        for r in formatted_results
+    ])
+
+    prompt = f"""User is searching for: "{query}"{f' by {artist_hint}' if artist_hint else ''}
+
+Search results:
+{results_text}
+
+Return ONLY the index number (0-{len(formatted_results)-1}) of the best matching song. Just the number, nothing else.
+
+Answer:"""
+
+    try:
+        # Use Cerebras for fast analysis - use more tokens to ensure response
+        model = get_cerebras_model(max_tokens=50, temperature=0.0)
+        response = model.invoke(prompt)
+
+        # Parse the response - should be just a number
+        response_text = response.content.strip() if response.content else ""
+        logger.info(f"[GENIUS AI] Raw response: '{response_text}'")
+
+        # Extract number from response
+        import re
+        numbers = re.findall(r'\d+', response_text)
+        if numbers:
+            index = int(numbers[0])
+            if 0 <= index < len(results):
+                selected = results[index]["result"]
+                logger.info(f"[GENIUS AI] Selected index {index}: {selected.get('title')} by {selected.get('primary_artist', {}).get('name')}")
+                return selected
+
+        # Fallback to first result if AI response is unclear
+        logger.warning(f"[GENIUS AI] Could not parse response '{response_text}', using first result")
+        return results[0]["result"]
+
+    except Exception as e:
+        logger.warning(f"[GENIUS AI] Analysis failed: {e}, using simple matching")
+        # Fallback to simple matching
+        if artist_hint:
+            for hit in results[:5]:
+                song = hit["result"]
+                if artist_hint.lower() in song.get("primary_artist", {}).get("name", "").lower():
+                    return song
+        return results[0]["result"]
+
+
+def _scrape_genius_url_sync(url: str) -> dict:
+    """Scrape lyrics from a Genius URL using BrightData WebUnlocker."""
+    import concurrent.futures
+
+    def _run():
+        # Get credentials for WebUnlocker
+        bearer_token = os.getenv("BRIGHTDATA_API_TOKEN") or os.getenv("BRIGHTDATA_WEBUNLOCKER_BEARER")
+        zone_string = os.getenv("WEB_UNLOCKER_ZONE") or os.getenv("BRIGHTDATA_WEBUNLOCKER_APP_ZONE_STRING")
+
+        if not bearer_token:
+            return {"success": False, "error": "BRIGHTDATA_API_TOKEN or BRIGHTDATA_WEBUNLOCKER_BEARER not set"}
+        if not zone_string:
+            return {"success": False, "error": "WEB_UNLOCKER_ZONE or BRIGHTDATA_WEBUNLOCKER_APP_ZONE_STRING not set"}
+
+        try:
+            from brightdata import WebUnlocker
+            unlocker = WebUnlocker(BRIGHTDATA_WEBUNLOCKER_BEARER=bearer_token, ZONE_STRING=zone_string)
+        except Exception as e:
+            return {"success": False, "error": f"Failed to create WebUnlocker: {e}"}
+
+        try:
+            result = unlocker.get_source(url)
+
+            if not result.success:
+                return {"success": False, "error": f"Scrape failed: {result.error}"}
+
+            html = result.data
+            if not html or len(html) < 500:
+                return {"success": False, "error": "Empty or too short response"}
+
+            if len(html) < 5000:
+                html_lower = html.lower()
+                if any(x in html_lower for x in ["access denied", "you have been blocked"]):
+                    return {"success": False, "error": "Request was blocked"}
+
+            lyrics_data = _extract_lyrics_from_html(html)
+            lyrics_data["url"] = url
+            lyrics_data["html_size"] = len(html)
+            return lyrics_data
+
+        except Exception as e:
+            return {"success": False, "error": f"Scrape error: {type(e).__name__}: {str(e)}"}
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(_run)
+        return future.result(timeout=120)
+
+
+def _detect_language(text: str) -> str:
+    """Detect the language of text based on character analysis.
+
+    Detects: Hebrew (he), Arabic (ar), Russian (ru), Chinese (zh),
+    Japanese (ja), Korean (ko), and defaults to English (en).
+
+    Args:
+        text: The text to analyze
+
+    Returns:
+        ISO 639-1 language code (e.g., 'he', 'en', 'ar')
+    """
+    if not text:
+        return "en"
+
+    # Count character types
+    hebrew_count = 0
+    arabic_count = 0
+    cyrillic_count = 0
+    cjk_count = 0
+    hangul_count = 0
+    latin_count = 0
+
+    for char in text:
+        code = ord(char)
+        # Hebrew: U+0590 to U+05FF
+        if 0x0590 <= code <= 0x05FF:
+            hebrew_count += 1
+        # Arabic: U+0600 to U+06FF
+        elif 0x0600 <= code <= 0x06FF:
+            arabic_count += 1
+        # Cyrillic: U+0400 to U+04FF
+        elif 0x0400 <= code <= 0x04FF:
+            cyrillic_count += 1
+        # CJK (Chinese/Japanese): U+4E00 to U+9FFF
+        elif 0x4E00 <= code <= 0x9FFF:
+            cjk_count += 1
+        # Hangul (Korean): U+AC00 to U+D7AF
+        elif 0xAC00 <= code <= 0xD7AF:
+            hangul_count += 1
+        # Latin: basic ASCII letters
+        elif 0x0041 <= code <= 0x007A:
+            latin_count += 1
+
+    # Determine language by highest count (excluding Latin as fallback)
+    counts = {
+        "he": hebrew_count,
+        "ar": arabic_count,
+        "ru": cyrillic_count,
+        "zh": cjk_count,  # Could be Chinese or Japanese, defaulting to Chinese
+        "ko": hangul_count,
+    }
+
+    max_lang = max(counts, key=counts.get)
+    if counts[max_lang] > 10:  # Threshold for non-Latin languages
+        return max_lang
+
+    # Default to English for Latin-based text
+    return "en"
+
+
+@tool
+def genius_get_lyrics(song_name: str, artist_name: Optional[str] = None) -> str:
+    """Get song lyrics in ONE call - searches Genius and uses AI to pick the best match.
+
+    This is the RECOMMENDED tool for getting lyrics. It:
+    1. Searches Genius API for the song
+    2. Uses AI (Cerebras) to analyze results and pick the BEST match
+    3. Scrapes lyrics from ONLY the AI-verified result
+    4. Detects the language automatically
+    5. Returns structured JSON array
+
+    The AI analysis ensures:
+    - Correct song is selected even with similar titles
+    - Artist matching is intelligent (handles variations)
+    - Only ONE URL is scraped (no wasted requests)
+
+    Args:
+        song_name: The name of the song
+        artist_name: Artist name (recommended for accurate matching)
+
+    Returns:
+        JSON array with structured song data:
+        [
+          {
+            "title": "Song Title",
+            "artist": "Artist Name",
+            "lyrics": "Full lyrics text...",
+            "language": "he"  // ISO 639-1 code (he, en, ar, ru, zh, ko)
+          }
+        ]
+    """
+    try:
+        # Step 1: Search Genius API
+        headers = get_genius_headers()
+        if not headers:
+            return json.dumps({"success": False, "error": "GENIUS_ACCESS_TOKEN not set"})
+
+        query = f"{song_name} {artist_name}" if artist_name else song_name
+        logger.info(f"[GENIUS] Searching for: {query}")
+
+        response = requests.get(
+            "https://api.genius.com/search",
+            params={"q": query},
+            headers=headers,
+            timeout=30
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        if "response" not in data or not data["response"].get("hits"):
+            return json.dumps({"success": False, "error": "No results found", "query": query})
+
+        hits = data["response"]["hits"]
+        logger.info(f"[GENIUS] Found {len(hits)} results, analyzing with AI...")
+
+        # Step 2: Use AI to analyze results and pick the best match
+        best_match = _ai_analyze_genius_results(
+            query=query,
+            results=hits,
+            artist_hint=artist_name
+        )
+
+        if not best_match:
+            return json.dumps({"success": False, "error": "AI could not find a matching result", "query": query})
+
+        song_url = best_match["url"]
+        song_title = best_match["title"]
+        song_artist = best_match["primary_artist"]["name"]
+
+        logger.info(f"[GENIUS] AI selected: {song_title} by {song_artist}")
+        logger.info(f"[GENIUS] Scraping URL: {song_url}")
+
+        # Step 3: Scrape lyrics from the verified URL
+        lyrics_result = _scrape_genius_url_sync(song_url)
+
+        if not lyrics_result.get("success"):
+            return json.dumps({
+                "success": False,
+                "error": lyrics_result.get("error", "Failed to scrape lyrics"),
+                "song_found": {"title": song_title, "artist": song_artist, "url": song_url}
+            })
+
+        # Step 4: Detect language from lyrics
+        lyrics_text = lyrics_result.get("lyrics") or ""
+        language = _detect_language(lyrics_text)
+
+        # Step 5: Return structured result in array format
+        structured_result = [{
+            "title": lyrics_result.get("title") or song_title,
+            "artist": lyrics_result.get("artist") or song_artist,
+            "lyrics": lyrics_text,
+            "language": language
+        }]
+
+        return json.dumps(structured_result, ensure_ascii=False, indent=2)
+
+    except Exception as e:
+        logger.error(f"[GENIUS] Error: {type(e).__name__}: {str(e)}")
+        return json.dumps({"success": False, "error": f"{type(e).__name__}: {str(e)}"})
+
+
+# ============================================================================
 # Collect All Tools
 # ============================================================================
 
@@ -865,11 +1218,12 @@ def get_all_tools():
     # Genius tools (if access token available)
     if os.getenv("GENIUS_ACCESS_TOKEN"):
         tools.extend([
+            genius_get_lyrics,  # RECOMMENDED: One-call solution for lyrics
             genius_search_song,
             genius_get_song_details,
             genius_get_artist,
         ])
-        logger.info("Genius API tools enabled")
+        logger.info("Genius API tools enabled (including genius_get_lyrics)")
     else:
         logger.warning("GENIUS_ACCESS_TOKEN not set - Genius tools disabled")
 
@@ -901,9 +1255,12 @@ YOUR TOOLS:
 - brightdata_search_linkedin: Search LinkedIn for people and companies
 
 **MUSIC/LYRICS (Genius API)**:
-- genius_search_song: Search for songs by name/artist
-- genius_get_song_details: Get detailed song information
+- genius_get_lyrics: RECOMMENDED! Get lyrics in ONE call (search + validate + scrape)
+- genius_search_song: Search for songs (use only if you need search results without lyrics)
+- genius_get_song_details: Get detailed song info (use only if you need metadata without lyrics)
 - genius_get_artist: Get artist information and bio
+
+IMPORTANT: For lyrics requests, ALWAYS use genius_get_lyrics first! It searches, validates, and scrapes in one call. Do NOT use multiple tools for a single lyrics request.
 
 **SUB-AGENTS (General Purpose)**:
 - Use the `task` tool to spawn sub-agents for parallel work

@@ -24,6 +24,22 @@ import requests
 import sys
 from typing import Optional, Literal
 
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    env_paths = [
+        os.path.join(os.path.dirname(__file__), '..', '.env'),
+        os.path.join(os.path.dirname(__file__), '.env'),
+        '.env',
+        'c:/projects/learn_ten_x_faster/deepagents/.env'
+    ]
+    for env_path in env_paths:
+        if os.path.exists(env_path):
+            load_dotenv(env_path)
+            break
+except ImportError:
+    pass
+
 # Module-level debug - write to file at import time
 try:
     import datetime as _dt
@@ -508,6 +524,10 @@ class ChatGemini3Flash(BaseChatModel):
         contents, system_instruction = self._convert_messages_to_contents(messages)
 
         # Get bound tools from kwargs or instance
+        bound_tools_count = len(getattr(self, '_bound_tools', []))
+        has_kwargs_tools = 'tools' in kwargs
+        with open('c:/projects/learn_ten_x_faster/deepagents/gemini_debug.log', 'a', encoding='utf-8') as f:
+            f.write('[DEBUG] self._bound_tools: ' + str(bound_tools_count) + ', kwargs_has_tools: ' + str(has_kwargs_tools) + '\n')
         tools = kwargs.get('tools', getattr(self, '_bound_tools', []))
 
         # Convert tools to Gemini format
@@ -678,6 +698,11 @@ class ChatGemini3Flash(BaseChatModel):
         Creates a new instance with tools bound, which will be passed to the
         Gemini API as FunctionDeclarations for native function calling.
         """
+        import datetime
+        with open('c:/projects/learn_ten_x_faster/deepagents/gemini_debug.log', 'a', encoding='utf-8') as f:
+            tool_names = [t.name if hasattr(t, 'name') else str(t)[:30] for t in tools[:5]]
+            f.write(f'\n[{datetime.datetime.now()}] bind_tools() called with {len(tools)} tools: {tool_names}...\n')
+
         # Create a new instance with tools bound
         new_instance = ChatGemini3Flash(
             model_name=self.model_name,
@@ -724,7 +749,7 @@ _brightdata_client = None
 
 
 def get_brightdata_client():
-    """Get or initialize BrightData SDK client (v1.1.3+ API)."""
+    """Get or initialize BrightData SDK client using bdclient API."""
     global _brightdata_client
 
     if _brightdata_client is None:
@@ -741,7 +766,7 @@ def get_brightdata_client():
 
         serp_zone = os.getenv("SERP_ZONE", "serp_api1")
         web_unlocker_zone = os.getenv("WEB_UNLOCKER_ZONE")
-        logger.info(f"Initializing BrightData client with SERP zone: {serp_zone}")
+        logger.info(f"Initializing BrightData client with SERP zone: {serp_zone}, Web Unlocker zone: {web_unlocker_zone}")
 
         try:
             _brightdata_client = bdclient(
@@ -773,7 +798,7 @@ def _run_search_in_thread(search_type: str, query: str, num_results: int):
     """Run BrightData search in a thread with its own client.
 
     Creates a fresh BrightData client in a separate thread to avoid uvloop
-    compatibility issues. Uses the sync API from brightdata SDK v1.1.3+.
+    compatibility issues. Uses bdclient.search() API.
     """
     import concurrent.futures
 
@@ -781,6 +806,7 @@ def _run_search_in_thread(search_type: str, query: str, num_results: int):
         # Create a fresh client in this thread
         api_token = os.getenv("BRIGHTDATA_API_TOKEN")
         if not api_token:
+            logger.error("[BRIGHTDATA] No API token found in thread")
             return None
 
         serp_zone = os.getenv("SERP_ZONE", "serp_api1")
@@ -789,18 +815,17 @@ def _run_search_in_thread(search_type: str, query: str, num_results: int):
             from brightdata import bdclient
             client = bdclient(api_token=api_token, serp_zone=serp_zone)
         except Exception as e:
-            logger.error(f"[BRIGHTDATA] Failed to create client in thread: {e}")
+            logger.error(f"[BRIGHTDATA] Failed to create bdclient in thread: {e}")
             return None
 
         try:
-            # Use the sync search API from SDK v1.1.3+
-            result = client.search(
+            # bdclient.search() takes search_engine parameter
+            return client.search(
                 query=query,
-                search_engine=search_type,
-                response_format="json",
-                parse=True
+                search_engine=search_type,  # "google" or "bing"
+                zone=serp_zone,
+                parse=True  # Get parsed results
             )
-            return result
         except Exception as e:
             logger.error(f"[BRIGHTDATA] Search error: {e}")
             return None
@@ -811,37 +836,55 @@ def _run_search_in_thread(search_type: str, query: str, num_results: int):
 
 
 def _run_scrape_in_thread(url: str, response_format: str = "raw"):
-    """Run BrightData scrape in a thread with its own client.
+    """Run BrightData scrape in a thread with its own event loop and client.
 
     Creates a fresh BrightData client in a separate thread to avoid uvloop
-    compatibility issues. Uses the sync API from brightdata SDK v1.1.3+.
+    compatibility issues. Uses bdclient which properly handles bot-auth pages
+    via web_unlocker zone.
     """
     import concurrent.futures
 
     def _run():
+        debug_log = 'c:/projects/learn_ten_x_faster/deepagents/brightdata_debug.log'
+        def log(msg):
+            with open(debug_log, 'a', encoding='utf-8') as f:
+                f.write(str(msg) + chr(10))
+        
         # Create a fresh client in this thread
         api_token = os.getenv("BRIGHTDATA_API_TOKEN")
+        web_unlocker_zone = os.getenv("WEB_UNLOCKER_ZONE")
+        log(f"[DEBUG] API token found: {bool(api_token)}, zone: {web_unlocker_zone}")
+
         if not api_token:
+            log("[DEBUG] No API token found in thread")
             return None
 
-        web_unlocker_zone = os.getenv("WEB_UNLOCKER_ZONE")
-
         try:
+            # Use bdclient for scraping with web_unlocker zone for bot-auth bypass
             from brightdata import bdclient
             client = bdclient(api_token=api_token, web_unlocker_zone=web_unlocker_zone)
+            log("[DEBUG] bdclient created successfully")
         except Exception as e:
-            logger.error(f"[BRIGHTDATA] Failed to create client in thread: {e}")
+            log(f"[DEBUG] Failed to create bdclient: {e}")
+            import traceback
+            log(traceback.format_exc())
             return None
 
         try:
-            # Use the sync scrape API from SDK v1.1.3+
-            return client.scrape(
+            log(f"[DEBUG] Scraping URL: {url} with zone: {web_unlocker_zone}")
+            # Use scrape method with web_unlocker zone for bot-auth pages (like Genius)
+            result = client.scrape(
                 url=url,
                 zone=web_unlocker_zone,
-                response_format=response_format
+                response_format=response_format,
+                method="GET"
             )
+            log(f"[DEBUG] Scrape result type: {type(result)}, length: {len(str(result)) if result else 0}")
+            return result
         except Exception as e:
-            logger.error(f"[BRIGHTDATA] Scrape error: {e}")
+            log(f"[DEBUG] Scrape error: {e}")
+            import traceback
+            log(traceback.format_exc())
             return None
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
@@ -1004,16 +1047,34 @@ def brightdata_scrape_url(
     Returns:
         JSON string with scraped content
     """
+    debug_log = 'c:/projects/learn_ten_x_faster/deepagents/brightdata_debug.log'
+    def log(msg):
+        with open(debug_log, 'a', encoding='utf-8') as f:
+            f.write(str(msg) + chr(10))
+    
+    log(f"[TOOL] brightdata_scrape_url called with url: {url}")
+    log(f"[TOOL] API token available: {bool(os.getenv('BRIGHTDATA_API_TOKEN'))}")
+    
     try:
         if not os.getenv("BRIGHTDATA_API_TOKEN"):
+            log("[TOOL] API token not set - returning error")
             return json.dumps({"success": False, "error": "BRIGHTDATA_API_TOKEN not set"})
 
+        log(f"[TOOL] About to call _run_scrape_in_thread")
         logger.info(f"[BRIGHTDATA] Scraping URL: {url}")
 
         # Run scrape in a separate thread to avoid uvloop conflicts
-        result = _run_scrape_in_thread(url, response_format)
+        try:
+            result = _run_scrape_in_thread(url, response_format)
+            log(f"[TOOL] _run_scrape_in_thread returned: type={type(result)}, is_none={result is None}, len={len(str(result)) if result else 0}")
+        except Exception as thread_error:
+            log(f"[TOOL] _run_scrape_in_thread raised exception: {thread_error}")
+            import traceback
+            log(traceback.format_exc())
+            return json.dumps({"success": False, "url": url, "error": f"Thread error: {thread_error}"})
 
         if result is None:
+            log("[TOOL] result is None - returning error")
             return json.dumps({"success": False, "url": url, "error": "Failed to execute scrape"})
 
         if hasattr(result, 'success') and result.success is False:
@@ -1192,7 +1253,7 @@ def _run_linkedin_search_in_thread(query: str, search_type: str):
     """Run LinkedIn search in a thread with its own client.
 
     Creates a fresh BrightData client in a separate thread to avoid uvloop
-    compatibility issues. Uses the sync API from brightdata SDK v1.1.3+.
+    compatibility issues. Uses bdclient.search_linkedin API.
     """
     import concurrent.futures
 
@@ -1200,21 +1261,22 @@ def _run_linkedin_search_in_thread(query: str, search_type: str):
         # Create a fresh client in this thread
         api_token = os.getenv("BRIGHTDATA_API_TOKEN")
         if not api_token:
+            logger.error("[BRIGHTDATA] No API token found in thread")
             return None
 
         try:
             from brightdata import bdclient
             client = bdclient(api_token=api_token)
         except Exception as e:
-            logger.error(f"[BRIGHTDATA] Failed to create client in thread: {e}")
+            logger.error(f"[BRIGHTDATA] Failed to create bdclient in thread: {e}")
             return None
 
         try:
-            # Use the sync LinkedIn search API from SDK v1.1.3+
             if search_type == "jobs":
-                return client.search_linkedin(keyword=query, search_type="jobs")
-            else:
-                return client.search_linkedin(keyword=query, search_type="people")
+                return client.search_linkedin.jobs(keyword=query)
+            else:  # profiles - SDK expects first_name for profiles
+                # Note: The query is used as first_name, last_name can be empty
+                return client.search_linkedin.profiles(first_name=query, last_name="")
         except Exception as e:
             logger.error(f"[BRIGHTDATA] LinkedIn search error: {e}")
             return None
@@ -1631,18 +1693,16 @@ def _scrape_genius_url_sync(url: str) -> dict:
             return {"success": False, "error": "WEB_UNLOCKER_ZONE or BRIGHTDATA_WEBUNLOCKER_APP_ZONE_STRING not set"}
 
         try:
-            from brightdata import WebUnlocker
-            unlocker = WebUnlocker(BRIGHTDATA_WEBUNLOCKER_BEARER=bearer_token, ZONE_STRING=zone_string)
+            from brightdata import bdclient
+            client = bdclient(api_token=bearer_token, web_unlocker_zone=zone_string)
         except Exception as e:
-            return {"success": False, "error": f"Failed to create WebUnlocker: {e}"}
+            return {"success": False, "error": f"Failed to create bdclient: {e}"}
 
         try:
-            result = unlocker.get_source(url)
+            html = client.scrape(url=url, zone=zone_string, response_format="raw", method="GET")
 
-            if not result.success:
-                return {"success": False, "error": f"Scrape failed: {result.error}"}
-
-            html = result.data
+            if not html:
+                return {"success": False, "error": "Scrape returned empty result"}
             if not html or len(html) < 500:
                 return {"success": False, "error": "Empty or too short response"}
 
@@ -1876,8 +1936,10 @@ async def agent():
     # - FilesystemMiddleware
     # - SubAgentMiddleware (general purpose)
     # - SummarizationMiddleware
+    model_with_tools = model.bind_tools(all_tools)
+
     return create_deep_agent(
-        model=model,
+        model=model_with_tools,
         tools=all_tools,
         system_prompt=SYSTEM_PROMPT,
     )
@@ -1916,3 +1978,5 @@ if __name__ == "__main__":
         print(result)
 
     asyncio.run(test())
+
+
