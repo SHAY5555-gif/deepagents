@@ -183,6 +183,9 @@ def _scrape_url_with_brightdata(url: str) -> Dict[str, Any]:
     logger.info(f"[GENIUS] Scraping URL: {url}")
 
     try:
+        # Get zone from environment or use default
+        zone = os.getenv("WEB_UNLOCKER_ZONE", "mcp_unlocker")
+
         # Direct HTTP call to BrightData Web Unlocker API
         # Using their scraping browser endpoint
         response = httpx.post(
@@ -192,7 +195,7 @@ def _scrape_url_with_brightdata(url: str) -> Dict[str, Any]:
                 "Content-Type": "application/json"
             },
             json={
-                "zone": "web_unlocker1",
+                "zone": zone,
                 "url": url,
                 "format": "raw"
             },
