@@ -173,44 +173,32 @@ def _extract_lyrics_from_html(html: str) -> Dict[str, Any]:
 
 
 def _scrape_url_with_brightdata(url: str) -> Dict[str, Any]:
-    """Scrape a URL using BrightData Web Unlocker via bdclient."""
+    """Scrape a URL using BrightData Web Unlocker."""
     try:
-        from brightdata import bdclient
+        from brightdata import scrape_url
     except ImportError:
-        return {"success": False, "error": "BrightData SDK not installed. Install with: pip install brightdata>=1.1.0"}
+        return {"success": False, "error": "BrightData SDK not installed. Install with: pip install brightdata-sdk>=1.1.0"}
 
     api_token = os.getenv("BRIGHTDATA_API_TOKEN")
     if not api_token:
         return {"success": False, "error": "BRIGHTDATA_API_TOKEN not set"}
 
-    web_unlocker_zone = os.getenv("WEB_UNLOCKER_ZONE", "mcp_unlocker")
-
-    logger.info(f"[GENIUS] Scraping URL: {url} with zone: {web_unlocker_zone}")
+    logger.info(f"[GENIUS] Scraping URL: {url}")
 
     try:
-        # Create bdclient with web_unlocker zone for bot-auth bypass
-        client = bdclient(api_token=api_token, web_unlocker_zone=web_unlocker_zone)
+        # Use brightdata scrape_url function
+        result = scrape_url(url, bearer_token=api_token)
 
-        # Use scrape method with web_unlocker zone
-        result = client.scrape(
-            url=url,
-            zone=web_unlocker_zone,
-            response_format="raw",
-            method="GET"
-        )
-
-        # Extract HTML from result
         if result is None:
             return {"success": False, "error": "BrightData scrape returned None", "url": url}
 
-        # Handle SDK response format: {'status_code', 'headers', 'body'}
-        if isinstance(result, dict):
-            html = result.get('body', '')
-            status_code = result.get('status_code', 0)
-            if status_code >= 400:
-                return {"success": False, "error": f"HTTP {status_code}", "url": url}
-        else:
-            html = str(result)
+        # ScrapeResult has .data (HTML) and .success attributes
+        if hasattr(result, 'success') and not result.success:
+            error_msg = getattr(result, 'error', 'Unknown error')
+            return {"success": False, "error": f"BrightData scrape failed: {error_msg}", "url": url}
+
+        # Get HTML from result
+        html = getattr(result, 'data', None) or str(result)
 
         if not html:
             return {"success": False, "error": "Empty response from BrightData", "url": url}
