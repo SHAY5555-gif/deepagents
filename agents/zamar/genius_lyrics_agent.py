@@ -173,11 +173,8 @@ def _extract_lyrics_from_html(html: str) -> Dict[str, Any]:
 
 
 def _scrape_url_with_brightdata(url: str) -> Dict[str, Any]:
-    """Scrape a URL using BrightData Web Unlocker."""
-    try:
-        from brightdata import scrape_url
-    except ImportError:
-        return {"success": False, "error": "BrightData SDK not installed. Install with: pip install brightdata-sdk>=1.1.0"}
+    """Scrape a URL using BrightData Web Unlocker API (direct HTTP call)."""
+    import httpx
 
     api_token = os.getenv("BRIGHTDATA_API_TOKEN")
     if not api_token:
@@ -186,19 +183,27 @@ def _scrape_url_with_brightdata(url: str) -> Dict[str, Any]:
     logger.info(f"[GENIUS] Scraping URL: {url}")
 
     try:
-        # Use brightdata scrape_url function
-        result = scrape_url(url, bearer_token=api_token)
+        # Direct HTTP call to BrightData Web Unlocker API
+        # Using their scraping browser endpoint
+        response = httpx.post(
+            "https://api.brightdata.com/request",
+            headers={
+                "Authorization": f"Bearer {api_token}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "zone": "web_unlocker1",
+                "url": url,
+                "format": "raw"
+            },
+            timeout=60.0
+        )
 
-        if result is None:
-            return {"success": False, "error": "BrightData scrape returned None", "url": url}
+        if response.status_code != 200:
+            logger.error(f"[GENIUS] BrightData API error: {response.status_code} - {response.text[:500]}")
+            return {"success": False, "error": f"BrightData API returned {response.status_code}", "url": url}
 
-        # ScrapeResult has .data (HTML) and .success attributes
-        if hasattr(result, 'success') and not result.success:
-            error_msg = getattr(result, 'error', 'Unknown error')
-            return {"success": False, "error": f"BrightData scrape failed: {error_msg}", "url": url}
-
-        # Get HTML from result
-        html = getattr(result, 'data', None) or str(result)
+        html = response.text
 
         if not html:
             return {"success": False, "error": "Empty response from BrightData", "url": url}
@@ -216,6 +221,9 @@ def _scrape_url_with_brightdata(url: str) -> Dict[str, Any]:
         lyrics_data["url"] = url
         return lyrics_data
 
+    except httpx.TimeoutException:
+        logger.error(f"[GENIUS] Scrape timeout")
+        return {"success": False, "error": "Request timed out", "url": url}
     except Exception as e:
         logger.error(f"[GENIUS] Scrape error: {e}")
         return {"success": False, "error": f"{type(e).__name__}: {str(e)}", "url": url}
