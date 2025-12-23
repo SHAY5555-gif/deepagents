@@ -28,6 +28,7 @@ brightdata-sdk>=1.1.0
 
 # Genius API for song lyrics
 requests>=2.31.0
+beautifulsoup4>=4.12.0
 
 # Async utilities for nested event loops
 nest_asyncio>=1.5.0
